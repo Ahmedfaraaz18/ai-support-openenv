@@ -1,0 +1,26 @@
+name: support-ticket-triage
+version: 1.0
+description: AI training environment for customer support ticket triage and resolution (billing/technical/account/other).
+observation_space:
+  ticket_id: int
+  message: str
+  user_history: list[str]
+  current_status: str
+  urgency_hint: str
+action_space:
+  assign_category:
+    type: str
+    choices: [billing, technical, account, other]
+  set_priority:
+    type: str
+    choices: [low, medium, high]
+  response:
+    type: str
+reward_range: [-1.0, 1.0]
+tasks:
+  - name: easy
+    description: clear intent tickets, single issue
+  - name: medium
+    description: ambiguous tickets, 2 possible categories
+  - name: hard
+    description: multi-problem tickets, noisy text, conflicting priorities

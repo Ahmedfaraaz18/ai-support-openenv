@@ -1,0 +1,154 @@
+import random
+from typing import Dict, List, Optional, Tuple
+
+from pydantic import ValidationError
+
+from .models import Action, Observation, Reward, State
+from .tasks import Ticket, get_ticket_by_id, get_tickets
+
+
+class SupportTicketEnv:
+    VALID_CATEGORIES = {"billing", "technical", "account", "other"}
+    VALID_PRIORITIES = {"low", "medium", "high"}
+
+    def __init__(self, level: str = "easy", seed: int = 42):
+        self.level = level
+        self.seed = seed
+        self.rng = random.Random(seed)
+        self.tickets: List[Ticket] = get_tickets(level)
+        if not self.tickets:
+            raise ValueError(f"No tickets found for level '{level}'")
+        self.current_ticket: Optional[Ticket] = None
+        self._state = State(step_count=0, ticket_resolved=False, total_reward=0.0)
+        self._last_action_invalid: bool = False
+        self._ticket_pool = self.tickets.copy()
+
+    def reset(self) -> Observation:
+        if not self._ticket_pool:
+            self._ticket_pool = self.tickets.copy()
+        self.current_ticket = self.rng.choice(self._ticket_pool)
+        # remove chosen randomly to avoid immediate repeats in same epoch
+        self._ticket_pool.remove(self.current_ticket)
+        self._state = State(step_count=0, ticket_resolved=False, total_reward=0.0)
+        self._last_action_invalid = False
+        return self._build_observation(self.current_ticket)
+
+    def step(self, action: Dict[str, str]) -> Tuple[Observation, Reward, bool, Dict]:
+        if self.current_ticket is None:
+            raise RuntimeError("Environment not initialized. Call reset() first.")
+
+        try:
+            action_model = Action(**action)
+            invalid_action = False
+            invalid_reasons: List[str] = []
+        except (ValidationError, ValueError) as e:
+            # action is invalid
+            action_model = None
+            invalid_action = True
+            invalid_reasons = ["invalid_action_format"]
+
+        self._state.step_count += 1
+
+        ticket = self.current_ticket
+        expected_category = ticket.expected_category
+        expected_priority = ticket.expected_priority
+
+        category_score = 0.0
+        priority_score = 0.0
+        response_score = 0.0
+        penalty = 0.0
+
+        if invalid_action:
+            penalty += 0.2
+            if self._last_action_invalid:
+                penalty += 0.1
+            self._last_action_invalid = True
+            reward_score = max(-1.0, 0.0 - penalty)
+            reward = Reward(score=reward_score, breakdown={"category": 0.0, "priority": 0.0, "response": 0.0, "penalty": penalty})
+            done = self._state.step_count >= 3
+            self._state.total_reward += reward_score
+            return self._build_observation(ticket), reward, done, {
+                "error": "invalid action", "invalid_reasons": invalid_reasons
+            }
+
+        # valid action model exists
+
+        if action_model.assign_category in self.VALID_CATEGORIES:
+            category_score = 1.0 if action_model.assign_category == expected_category else 0.5 if expected_category in ["billing", "account"] and action_model.assign_category in ["billing", "account"] else 0.0
+            if action_model.assign_category != expected_category:
+                penalty += 0.0
+        else:
+            category_score = 0.0
+            penalty += 0.2
+            invalid_reasons.append("invalid_category")
+
+        if action_model.set_priority in self.VALID_PRIORITIES:
+            priority_score = 1.0 if action_model.set_priority == expected_priority else 0.5 if action_model.set_priority == "medium" and expected_priority in {"low", "high"} else 0.0
+            if action_model.set_priority != expected_priority:
+                penalty += 0.0
+        else:
+            priority_score = 0.0
+            penalty += 0.2
+            invalid_reasons.append("invalid_priority")
+
+        normalized_response = action_model.response.lower().strip()
+        if not normalized_response:
+            penalty += 0.2
+            invalid_reasons.append("empty_response")
+        else:
+            # response quality relative to expected keywords
+            matched = sum(1 for kw in ticket.expected_keywords if kw.lower() in normalized_response)
+            response_score = min(1.0, matched / max(1, len(ticket.expected_keywords)))
+
+        # repeated invalid (useless) if last also invalid
+        if invalid_reasons and self._last_action_invalid:
+            penalty += 0.1
+
+        self._last_action_invalid = bool(invalid_reasons)
+
+        base_score = 0.4 * category_score + 0.3 * priority_score + 0.3 * response_score
+        total_score = base_score - penalty
+        total_score = max(-1.0, min(1.0, total_score))
+
+        reward_breakdown = {
+            "category": category_score,
+            "priority": priority_score,
+            "response": response_score,
+            "penalty": penalty,
+        }
+
+        reward = Reward(score=total_score, breakdown=reward_breakdown)
+
+        self._state.total_reward += total_score
+
+        # resolved when conditions met
+        self._state.ticket_resolved = (
+            category_score >= 1.0
+            and priority_score >= 1.0
+            and response_score >= 0.6
+            and not invalid_reasons
+        )
+
+        done = self._state.ticket_resolved or self._state.step_count >= 3
+
+        info = {
+            "expected_category": expected_category,
+            "expected_priority": expected_priority,
+            "matched_keywords": response_score,
+            "invalid_reasons": invalid_reasons,
+            "step_count": self._state.step_count,
+        }
+
+        return self._build_observation(ticket), reward, done, info
+
+    def state(self) -> State:
+        return self._state
+
+    def _build_observation(self, ticket: Ticket) -> Observation:
+        return Observation(
+            ticket_id=ticket.ticket_id,
+            message=ticket.message,
+            user_history=ticket.user_history,
+            current_status=ticket.current_status,
+            urgency_hint=ticket.urgency_hint,
+        )
