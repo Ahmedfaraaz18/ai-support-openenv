@@ -2,22 +2,16 @@ import os
 from typing import Any, Dict, List
 
 from flask import Flask, request, jsonify
-from openai import OpenAI
 
 from env.environment import SupportTicketEnv
 from env.grader import grade_episode
+from inference import generate_answer, parse_answer
 
 app = Flask(__name__)
 
 # Store active environments per session
 environments: Dict[str, SupportTicketEnv] = {}
 trajectories: Dict[str, List] = {}
-
-MOCK_ANSWER = (
-    "Category: billing\n"
-    "Priority: high\n"
-    "Response: We apologize for the inconvenience. We will investigate the billing issue immediately."
-)
 
 
 def serialize_observation(obs):
@@ -32,36 +26,6 @@ def serialize_reward(reward):
     if hasattr(reward, "model_dump"):
         return reward.model_dump()
     return reward.dict() if hasattr(reward, "dict") else reward
-
-
-def generate_answer(prompt: str) -> str:
-    use_mock = os.getenv("BASELINE_USE_MOCK", "").lower() in {"1", "true", "yes"}
-    api_key = os.getenv("OPENAI_API_KEY")
-
-    if use_mock:
-        return MOCK_ANSWER
-
-    if not api_key:
-        raise EnvironmentError(
-            "OPENAI_API_KEY environment variable must be set to run the baseline. "
-            "Set BASELINE_USE_MOCK=1 only if you want the offline mock fallback."
-        )
-
-    client = OpenAI(api_key=api_key)
-    completion = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": "You are an accurate ticket triage model.",
-            },
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0.0,
-        max_tokens=400,
-    )
-
-    return completion.choices[0].message.content or ""
 
 
 @app.route("/", methods=["GET"])
@@ -250,6 +214,14 @@ def tasks():
 def baseline():
     """Run baseline agent on all tasks and return scores."""
     try:
+        use_mock = os.getenv("BASELINE_USE_MOCK", "").lower() in {"1", "true", "yes"}
+        client = None
+        model_name = os.getenv("MODEL_NAME")
+        if not use_mock:
+            from inference import get_client
+
+            client = get_client()
+
         results = {}
         for level in ["easy", "medium", "hard"]:
             env = SupportTicketEnv(level=level, seed=42)
@@ -270,7 +242,7 @@ def baseline():
                     f"Response: <supportful agent message>\n"
                 )
 
-                answer = generate_answer(prompt)
+                answer = generate_answer(prompt, client, model_name)
                 action = parse_answer(answer)
 
                 obs_next, reward, done, info = env.step(action)
@@ -293,47 +265,6 @@ def baseline():
         )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-
-def parse_answer(text: str) -> Dict[str, Any]:
-    """Parse model response into action."""
-    import re
-
-    parsed = {
-        "assign_category": "other",
-        "set_priority": "low",
-        "response": "",
-    }
-    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
-
-    for line in lines:
-        if line.lower().startswith("category"):
-            parsed["assign_category"] = (
-                re.sub(r"^.*?:", "", line, flags=re.IGNORECASE)
-                .strip()
-                .lower()
-            )
-        elif line.lower().startswith("priority"):
-            parsed["set_priority"] = (
-                re.sub(r"^.*?:", "", line, flags=re.IGNORECASE)
-                .strip()
-                .lower()
-            )
-        elif line.lower().startswith("response"):
-            parsed["response"] = (
-                re.sub(r"^.*?:", "", line, flags=re.IGNORECASE).strip()
-            )
-
-    if not parsed["response"]:
-        body = text.strip()
-        if "response" in body.lower():
-            body_split = re.split(r"response\s*:", body, flags=re.IGNORECASE)
-            if len(body_split) > 1:
-                parsed["response"] = body_split[1].strip()
-        else:
-            parsed["response"] = body
-
-    return parsed
 
 
 if __name__ == "__main__":

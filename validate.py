@@ -23,6 +23,7 @@ def validate_project_structure():
         "openenv.yaml",
         "Dockerfile",
         "README.md",
+        "inference.py",
         "env/models.py",
         "env/environment.py",
         "env/grader.py",
@@ -210,6 +211,23 @@ def validate_baseline():
         return False
 
 
+def validate_inference_script():
+    """Check required root inference script is importable."""
+    print(f"{OK} Validating inference script...")
+    try:
+        from inference import run_inference
+
+        if not callable(run_inference):
+            print(f"  {FAIL} run_inference is not callable")
+            return False
+
+        print(f"  {OK} inference.py is importable")
+        return True
+    except Exception as exc:
+        print(f"  {FAIL} Error validating inference script: {exc}")
+        return False
+
+
 def validate_readme():
     """Check README includes the required compliance sections."""
     print(f"{OK} Validating README...")
@@ -250,6 +268,7 @@ def main():
         validate_grader,
         validate_dockerfile,
         validate_baseline,
+        validate_inference_script,
         validate_readme,
     ]
 

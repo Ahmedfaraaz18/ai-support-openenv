@@ -17,7 +17,7 @@ The benchmark is designed to satisfy the OpenEnv hackathon requirements:
 - Three graded task levels from easy to hard
 - Dense reward shaping with partial-progress signals
 - Deterministic episode grading in the `0.0` to `1.0` range
-- Baseline inference support through the OpenAI API client
+- Root `inference.py` entrypoint using the OpenAI client
 - Docker deployment suitable for Hugging Face Spaces
 
 ## Observation Space
@@ -95,20 +95,22 @@ Task metadata is declared in [openenv.yaml](/c:/Users/ahmed/OneDrive/Desktop/ope
 
 ## Baseline Inference
 
-The baseline runner is implemented in [scripts/baseline.py](/c:/Users/ahmed/OneDrive/Desktop/openenv-support-agent/scripts/baseline.py).
+The required submission entrypoint is [inference.py](/c:/Users/ahmed/OneDrive/Desktop/openenv-support-agent/inference.py). A compatibility wrapper also remains in [scripts/baseline.py](/c:/Users/ahmed/OneDrive/Desktop/openenv-support-agent/scripts/baseline.py).
 
-By default it uses the OpenAI API client and reads credentials from `OPENAI_API_KEY`:
+It uses the OpenAI client with the required environment variables:
 
 ```bash
-set OPENAI_API_KEY=sk-...
-python -m scripts.baseline
+set API_BASE_URL=https://your-llm-endpoint/v1
+set MODEL_NAME=your-model-name
+set HF_TOKEN=your-token
+python inference.py
 ```
 
 For an offline fallback during local development only:
 
 ```bash
 set BASELINE_USE_MOCK=1
-python -m scripts.baseline
+python inference.py
 ```
 
 Mock-mode output on this repo:
@@ -124,8 +126,10 @@ Overall score: 0.595
 On Linux or macOS:
 
 ```bash
-export OPENAI_API_KEY=sk-...
-python -m scripts.baseline
+export API_BASE_URL=https://your-llm-endpoint/v1
+export MODEL_NAME=your-model-name
+export HF_TOKEN=your-token
+python inference.py
 ```
 
 ## Setup
@@ -210,7 +214,7 @@ docker run -p 7860:7860 openenv-support-agent
 1. Create a new Space on Hugging Face.
 2. Choose the `Docker` SDK.
 3. Push this repository to the Space or upload the repository contents.
-4. In the Space settings, add `OPENAI_API_KEY` so the baseline can use the OpenAI client.
+4. Define `API_BASE_URL`, `MODEL_NAME`, and `HF_TOKEN` in the Space configuration.
 5. Set `BASELINE_USE_MOCK=1` only if you want the offline fallback instead of live model calls.
 6. Let the Space build the Docker image from the included [Dockerfile](/c:/Users/ahmed/OneDrive/Desktop/openenv-support-agent/Dockerfile).
 7. After deployment, verify:
@@ -258,6 +262,7 @@ Each episode allows up to 3 steps. Episodes terminate when the ticket is resolve
 |-- configs/
 |-- data/
 |-- Dockerfile
+|-- inference.py
 |-- openenv.yaml
 |-- requirements.txt
 `-- validate.py
