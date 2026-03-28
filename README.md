@@ -1,373 +1,232 @@
 
+
 # AI Customer Support Triage + Escalation Environment
+=======
+# AI Customer Support Triage Environment
+>>>>>>> a77f3af (updated files)
 
-## 🎯 Overview
+This repository implements a realistic OpenEnv task for customer support ticket triage. The agent receives support tickets, classifies them into the right queue, assigns a handling priority, and drafts a helpful reply. The task is operational and real-world, not a game or toy benchmark.
 
-A production-grade **OpenEnv environment** for training AI agents on realistic customer support workflows. Agents must classify tickets, assign priorities, generate helpful responses, and decide when to escalate to human handlers.
+## Overview
 
-**Real-world impact**: This environment trains agents to handle billions of customer support interactions at scale while maintaining quality and human oversight.
+The environment models a support workflow with three difficulty levels:
 
----
+1. `easy`: single-issue tickets with clear intent
+2. `medium`: ambiguous tickets with overlapping cues
+3. `hard`: noisy multi-problem tickets that require stronger reasoning
 
-## 🌟 Why This Environment?
+The benchmark is designed to satisfy the OpenEnv hackathon requirements:
 
-**The Problem**:
-- Modern support systems process millions of tickets daily
-- Manual triage is slow and inconsistent
-- Fully automated responses miss context and emotional nuance
-- Escalation timing is critical: escalate too early = wasted human time; too late = customer frustration
+- Typed models for observation, action, reward, and state
+- Full `reset()`, `step()`, and `state()` environment API
+- Three graded task levels from easy to hard
+- Dense reward shaping with partial-progress signals
+- Deterministic episode grading in the `0.0` to `1.0` range
+- Reproducible baseline inference script
+- Docker deployment suitable for Hugging Face Spaces
 
-**The Solution**:
-- Train RL agents to make intelligent triage decisions
-- Dense reward shaping guides learning step-by-step
-- Multi-step episodes allow refinement and escalation
-- Deterministic grading ensures fair evaluation
+## Observation Space
 
----
-
-## 📋 Tasks
-
-### 1. EASY: Clear Intent (6 tickets)
-Single issue, obvious category, straightforward resolution.
-
-**Example**:
-```
-Message: "I was charged twice for my last invoice, please fix it."
-Expected: billing/high/refund required
-```
-
-### 2. MEDIUM: Ambiguous Intent (6 tickets)
-Multiple issues or unclear user intent; requires reasoning.
-
-**Example**:
-```
-Message: "Something is broken and I'm not sure what to do. Also my bill looks wrong."
-Expected: Either billing+technical (depends on interpretation) /medium/escalation likely
-```
-
-### 3. HARD: Multi-Problem + Emotional Users (6 tickets)
-Complex scenarios, frustrated users, multiple issues, escalation required.
-
-**Example**:
-```
-Message: "I've been trying to fix this for 3 days and your support is terrible! My account locked after I reset my password and now I'm being charged for something I cancelled!"
-Expected: account/critical + technical/escalation required
-```
-
----
-
-## 🏗️ Environment Design
-
-### Observation Fields
+The environment returns the following typed observation:
 
 ```python
 Observation(
     ticket_id: int,
-    message: str,              # realistic messy human language
-    user_history: list[str],   # past interactions
-    sentiment: str,            # "angry", "neutral", "happy"
-    urgency_hint: str,         # context from ticket metadata
-    previous_attempts: int,    # how many times support tried
+    message: str,
+    user_history: list[str],
+    current_status: str,
+    urgency_hint: str,
 )
 ```
 
-### Action Schema
+## Action Space
+
+The agent acts with:
 
 ```python
 Action(
-    assign_category: str,      # "billing", "technical", "account", "abuse", "other"
-    set_priority: str,         # "low", "medium", "high", "critical"
-    response: str,             # agent's message to customer
-    escalate: bool,            # escalate to human?
+    assign_category: str,  # billing | technical | account | other
+    set_priority: str,     # low | medium | high
+    response: str,
 )
 ```
 
-### Reward Function (Dense, Multi-Component)
+## Reward Function
 
-```
-score = 0.3 * category_correctness 
-      + 0.2 * priority_correctness
-      + 0.25 * response_quality
-      + 0.25 * escalation_correctness
-      - penalties
+The step reward is dense and provides partial credit:
 
-Penalties:
-  - Wrong escalation decision: -0.2
-  - Empty/irrelevant response: -0.3
-  - Repeated bad actions: -0.1
+- Category correctness contributes `40%`
+- Priority correctness contributes `30%`
+- Response quality contributes `30%`
+- Invalid or empty actions incur penalties
+- Repeated invalid actions incur an additional penalty
 
-Bonuses:
-  - Response contains politeness keywords ("sorry", "assist"): +0.05
-  - Correct escalation when needed: +0.1
-```
+Step rewards are clipped to `[-1.0, 1.0]`.
 
-### State Tracking
+The episode grader in [env/grader.py](/c:/Users/ahmed/OneDrive/Desktop/openenv-support-agent/env/grader.py) converts trajectories to a deterministic `0.0` to `1.0` score by combining normalized reward history with final-step correctness.
+
+## State
+
+The environment exposes:
 
 ```python
 State(
-    step_count: int,           # 0-3 per episode
-    resolved: bool,            # ticket fully resolved?
-    escalated: bool,           # escalated to human?
-    total_reward: float,       # cumulative reward
+    step_count: int,
+    ticket_resolved: bool,
+    total_reward: float,
 )
 ```
 
----
+## OpenEnv Components
 
-## 🚀 Deployment
+The main implementation lives in:
+
+- [env/models.py](/c:/Users/ahmed/OneDrive/Desktop/openenv-support-agent/env/models.py)
+- [env/environment.py](/c:/Users/ahmed/OneDrive/Desktop/openenv-support-agent/env/environment.py)
+- [env/grader.py](/c:/Users/ahmed/OneDrive/Desktop/openenv-support-agent/env/grader.py)
+- [env/tasks.py](/c:/Users/ahmed/OneDrive/Desktop/openenv-support-agent/env/tasks.py)
+- [openenv.yaml](/c:/Users/ahmed/OneDrive/Desktop/openenv-support-agent/openenv.yaml)
+
+## Tasks
+
+Task metadata is declared in [openenv.yaml](/c:/Users/ahmed/OneDrive/Desktop/openenv-support-agent/openenv.yaml) and backed by realistic ticket fixtures in [env/tasks.py](/c:/Users/ahmed/OneDrive/Desktop/openenv-support-agent/env/tasks.py).
+
+- `easy`
+  Clear issues such as duplicate charges or straightforward password-reset problems.
+- `medium`
+  Tickets with mixed signals, overlapping account and billing clues, or less direct phrasing.
+- `hard`
+  Multi-issue tickets with conflicting symptoms, requiring better prioritization and response content.
+
+## Baseline Inference
+
+The baseline runner is implemented in [scripts/baseline.py](/c:/Users/ahmed/OneDrive/Desktop/openenv-support-agent/scripts/baseline.py).
+
+By default it uses the OpenAI API client and reads credentials from `OPENAI_API_KEY`:
+
+```bash
+set OPENAI_API_KEY=sk-...
+python -m scripts.baseline
+```
+
+For an offline fallback during local development only:
+
+```bash
+set BASELINE_USE_MOCK=1
+python -m scripts.baseline
+```
+
+Mock-mode output on this repo:
+
+```text
+Baseline task scores:
+  easy: 0.325
+  medium: 0.744
+  hard: 0.718
+Overall score: 0.595
+```
+
+On Linux or macOS:
+
+```bash
+export OPENAI_API_KEY=sk-...
+python -m scripts.baseline
+```
+
+## Setup
 
 ### Local Development
 
 ```bash
-# Install dependencies
-pip install pydantic openai flask pyyaml
-
-# Run Flask server
-python scripts/server.py
-
-# Server starts at http://localhost:7860
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
-### Docker Deployment (Recommended for HF Spaces)
+If the plain `python` launcher is unreliable on your Windows setup, use:
 
 ```bash
-docker build -t openenv-support .
-docker run -p 7860:7860 -e OPENAI_API_KEY="sk-..." openenv-support
+.\.venv\Scripts\python.exe -m scripts.baseline
+.\.venv\Scripts\python.exe validate.py
 ```
 
-### Hugging Face Spaces (One-Click Deployment)
+### Validation
 
-1. Create new Space: [hf.co/spaces/new](https://hf.co/spaces/new)
-2. Choose "Docker" template
-3. Upload this repository
-4. Set environment variable: `OPENAI_API_KEY` in Space secrets
-5. Space will auto-deploy at `https://username-spacename.hf.space`
-
----
-
-## 📡 API Endpoints
-
-### Health Check
-```
-GET /health
-→ {"status": "healthy", "version": "1.0"}
-```
-
-### Reset Environment
-```
-POST /reset
-Body: {"level": "easy", "session_id": "user123"}
-→ {
-    "observation": {...},
-    "session_id": "user123",
-    "level": "easy"
-  }
-```
-
-### Step Environment
-```
-POST /step
-Body: {
-  "session_id": "user123",
-  "action": {
-    "assign_category": "billing",
-    "set_priority": "high",
-    "response": "We will process your refund immediately.",
-    "escalate": false
-  }
-}
-→ {
-    "observation": {...},
-    "reward": {"score": 0.85, "breakdown": {...}},
-    "done": false,
-    "info": {...},
-    "state": {...}
-  }
-```
-
-### Get Current State
-```
-POST /state
-Body: {"session_id": "user123"}
-→ {
-    "step_count": 1,
-    "resolved": false,
-    "escalated": false,
-    "total_reward": 0.85
-  }
-```
-
-### Grade Episode
-```
-POST /grader
-Body: {"session_id": "user123"}
-→ {"episode_score": 0.82}
-```
-
-### List Tasks & Schema
-```
-GET /tasks
-→ {
-    "tasks": [
-      {"name": "easy", "description": "..."},
-      {"name": "medium", "description": "..."},
-      {"name": "hard", "description": "..."}
-    ],
-    "action_schema": {...}
-  }
-```
-
-### Run Baseline Agent
-```
-POST /baseline
-→ {
-    "baseline_scores": {
-      "easy": 0.78,
-      "medium": 0.65,
-      "hard": 0.52
-    },
-    "overall": 0.65
-  }
-```
-
----
-
-## 🧪 Pre-Submission Validation
-
-Run this before submitting to ensure all requirements are met:
+Run the local compliance validator:
 
 ```bash
 python validate.py
 ```
 
-Expected output:
-```
-============================================================
-OpenEnv Hackathon Pre-Submission Validator
-============================================================
+## API Server
 
-✓ Checking project structure...
-  ✓ All directories and files present
-✓ Validating openenv.yaml...
-  ✓ openenv.yaml is valid
-✓ Validating Pydantic models...
-  ✓ All models importable
-✓ Validating environment API...
-  ✓ reset(), step(), state() working correctly
-✓ Validating grader...
-  ✓ Grader working correctly
-✓ Validating Dockerfile...
-  ✓ Dockerfile valid
-✓ Validating README...
-  ✓ README present
+The Flask API is implemented in [scripts/server.py](/c:/Users/ahmed/OneDrive/Desktop/openenv-support-agent/scripts/server.py).
 
-============================================================
-✓ ALL CHECKS PASSED - Ready to submit!
-============================================================
-```
-
----
-
-## 📊 Baseline Results
-
-Run the baseline agent on all 3 tasks:
+Run it locally with:
 
 ```bash
-export OPENAI_API_KEY="sk-..."
-python -m scripts.baseline
+python scripts/server.py
 ```
 
-Expected output:
-```
-Baseline task scores:
-  easy: 0.782
-  medium: 0.654
-  hard: 0.523
-Overall score: 0.653
-```
+Endpoints:
 
-### What These Scores Mean
+- `GET /health`
+- `POST /reset`
+- `POST /step`
+- `POST /state`
+- `POST /grader`
+- `GET /tasks`
+- `POST /baseline`
 
-- **Easy (0.78)**: Agent correctly classifies obvious tickets, good responses
-- **Medium (0.65)**: Agent handles ambiguity reasonably but makes some errors
-- **Hard (0.52)**: Large gap between optimal and achieved; room for improvement
+## Docker and Hugging Face Spaces
 
-The gap between Easy and Hard demonstrates genuine task difficulty progression.
+The repository includes a Dockerfile that installs dependencies from [requirements.txt](/c:/Users/ahmed/OneDrive/Desktop/openenv-support-agent/requirements.txt) and serves the Flask app on port `7860`.
+Inside the container, the app is started with `gunicorn` rather than Flask's development server.
 
----
+Build and run locally:
 
-## 🔍 Example Interaction
-
-### Ticket (MEDIUM difficulty)
-```
-Message: "The app keeps crashing and also I need to update my payment info. Never had these issues before."
-User History: ["Account created 2 months ago", "Never reported issues before"]
-Sentiment: frustrated
-Previous Attempts: 1
+```bash
+docker build -t openenv-support-agent .
+docker run -p 7860:7860 openenv-support-agent
 ```
 
-### Agent's Action
-```json
-{
-  "assign_category": "technical",
-  "set_priority": "high",
-  "response": "I'm sorry you're experiencing issues. Let me help with both problems: 1) Our team is aware of the crashes in the latest version—please try uninstalling and reinstalling. 2) You can update payment info in Settings > Billing. If issues persist, I'll escalate to our technical team.",
-  "escalate": true
-}
-```
+### Hugging Face Spaces
 
-### Reward Breakdown
-```
-Category correctness (technical): 1.0 × 0.3 = 0.30
-Priority correctness (high): 1.0 × 0.2 = 0.20
-Response quality (has keywords, polite): 0.85 × 0.25 = 0.21
-Escalation correctness: 1.0 × 0.25 = 0.25
-Politeness bonus: +0.05
-─────────────────────────
-Total Score: 0.86
-```
+1. Create a new Space on Hugging Face.
+2. Choose the `Docker` SDK.
+3. Push this repository to the Space or upload the repository contents.
+4. In the Space settings, add `OPENAI_API_KEY` so the baseline can use the OpenAI client.
+5. Set `BASELINE_USE_MOCK=1` only if you want the offline fallback instead of live model calls.
+6. Let the Space build the Docker image from the included [Dockerfile](/c:/Users/ahmed/OneDrive/Desktop/openenv-support-agent/Dockerfile).
+7. After deployment, verify:
+   `GET /health`
+   `GET /tasks`
+   `POST /baseline`
+8. Share the generated Space URL in your submission.
 
----
+## Project Structure
 
-## 📚 OpenEnv Compliance
-
-This environment strictly follows the OpenEnv specification:
-
-✅ `reset()` → Observation
-✅ `step(Action)` → (Observation, Reward, done, info)
-✅ `state()` → State
-✅ Pydantic models for all types
-✅ Deterministic grader: `grade_episode(trajectory) → float`
-✅ YAML metadata: `openenv.yaml`
-✅ Dockerfile for deployment
-✅ 3+ multi-level tasks with clear progression
-
----
-
-## 🛠️ Project Structure
-
-```
+```text
 .
-├── env/
-│   ├── __init__.py
-│   ├── models.py           # Pydantic data models
-│   ├── environment.py      # SupportTicketEnv implementation
-│   └── grader.py           # Episode grading logic
-├── data/
-│   └── tickets.py          # 18 realistic tickets
-├── scripts/
-│   ├── __init__.py
-│   ├── baseline.py         # Baseline inference script
-│   └── server.py           # Flask HTTP server
-├── configs/                # Reserved for config files
-├── openenv.yaml            # Environment metadata
-├── Dockerfile              # Production container
-├── README.md               # This file
-└── validate.py             # Pre-submission validator
+|-- env/
+|   |-- models.py
+|   |-- environment.py
+|   |-- grader.py
+|   `-- tasks.py
+|-- scripts/
+|   |-- baseline.py
+|   `-- server.py
+|-- configs/
+|-- data/
+|-- Dockerfile
+|-- openenv.yaml
+|-- requirements.txt
+`-- validate.py
 ```
 
----
+## License
 
+<<<<<<< HEAD
 ## 📝 Technical Details
 
 ### Deterministic Grading
@@ -422,3 +281,6 @@ MIT (Open for educational and commercial use)
 
 # ai-support-openenv
 OpenEnv-based AI environment for customer support triage and escalation, featuring realistic ticket simulation, multi-step decision making, and reward shaping for agent evaluation.
+=======
+MIT
+

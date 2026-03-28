@@ -2,13 +2,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY . /app
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-RUN pip install --no-cache-dir pydantic openai flask pyyaml
+COPY . /app
 
 EXPOSE 7860
 
-ENV FLASK_APP=scripts/server.py
-ENV FLASK_ENV=production
-
-CMD ["python", "-m", "flask", "run", "--host=0.0.0.0", "--port=7860"]
+CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "2", "scripts.server:app"]

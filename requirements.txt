@@ -1,3 +1,6 @@
 pydantic
 openai
 python-dotenv
+flask
+pyyaml
+gunicorn

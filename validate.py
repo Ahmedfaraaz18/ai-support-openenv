@@ -1,16 +1,23 @@
 #!/usr/bin/env python
 """
-Pre-submission validation script for OpenEnv hackathon.
-Run this before submitting to ensure compliance.
+Pre-submission validation script for the OpenEnv environment.
+Run this before submitting to ensure the repo is structurally complete.
 """
 
-import sys
-import yaml
 from pathlib import Path
+import sys
+
+import yaml
+
+
+OK = "[OK]"
+FAIL = "[FAIL]"
+WARN = "[WARN]"
+
 
 def validate_project_structure():
-    """Check project structure."""
-    print("✓ Checking project structure...")
+    """Check required directories and files."""
+    print(f"{OK} Checking project structure...")
     required_dirs = ["env", "data", "scripts", "configs"]
     required_files = [
         "openenv.yaml",
@@ -19,166 +26,214 @@ def validate_project_structure():
         "env/models.py",
         "env/environment.py",
         "env/grader.py",
-        "data/tickets.py",
+        "env/tasks.py",
         "scripts/baseline.py",
         "scripts/server.py",
     ]
 
-    for d in required_dirs:
-        if not Path(d).exists():
-            print(f"  ✗ Missing directory: {d}")
+    for directory in required_dirs:
+        if not Path(directory).exists():
+            print(f"  {FAIL} Missing directory: {directory}")
             return False
 
-    for f in required_files:
-        if not Path(f).exists():
-            print(f"  ✗ Missing file: {f}")
+    for file_path in required_files:
+        if not Path(file_path).exists():
+            print(f"  {FAIL} Missing file: {file_path}")
             return False
 
-    print("  ✓ All directories and files present")
+    print(f"  {OK} All directories and files present")
     return True
 
 
 def validate_openenv_yaml():
     """Validate openenv.yaml structure."""
-    print("✓ Validating openenv.yaml...")
+    print(f"{OK} Validating openenv.yaml...")
     try:
-        with open("openenv.yaml", "r") as f:
-            config = yaml.safe_load(f)
+        with open("openenv.yaml", "r", encoding="utf-8") as handle:
+            config = yaml.safe_load(handle)
 
-        required_keys = ["name", "version", "description", "observation_space", "action_space", "reward_range", "tasks"]
+        required_keys = [
+            "name",
+            "version",
+            "description",
+            "observation_space",
+            "action_space",
+            "reward_range",
+            "tasks",
+        ]
         for key in required_keys:
             if key not in config:
-                print(f"  ✗ Missing key in openenv.yaml: {key}")
+                print(f"  {FAIL} Missing key in openenv.yaml: {key}")
                 return False
 
         if not isinstance(config["tasks"], list) or len(config["tasks"]) < 3:
-            print("  ✗ Must have at least 3 tasks")
+            print(f"  {FAIL} Must have at least 3 tasks")
             return False
 
-        print("  ✓ openenv.yaml is valid")
+        if config["reward_range"] != [-1.0, 1.0]:
+            print(f"  {FAIL} reward_range should be [-1.0, 1.0]")
+            return False
+
+        print(f"  {OK} openenv.yaml is valid")
         return True
-    except Exception as e:
-        print(f"  ✗ Error validating openenv.yaml: {e}")
+    except Exception as exc:
+        print(f"  {FAIL} Error validating openenv.yaml: {exc}")
         return False
 
 
 def validate_pydantic_models():
-    """Check Pydantic models are importable."""
-    print("✓ Validating Pydantic models...")
+    """Check typed models are importable."""
+    print(f"{OK} Validating typed models...")
     try:
-        from env.models import Observation, Action, Reward, State
-        print("  ✓ All models importable")
+        from env.models import Action, Observation, Reward, State
+
+        _ = Action, Observation, Reward, State
+        print(f"  {OK} All models importable")
         return True
-    except Exception as e:
-        print(f"  ✗ Error importing models: {e}")
+    except Exception as exc:
+        print(f"  {FAIL} Error importing models: {exc}")
         return False
 
 
 def validate_environment():
     """Test environment reset/step/state."""
-    print("✓ Validating environment API...")
+    print(f"{OK} Validating environment API...")
     try:
         from env.environment import SupportTicketEnv
 
         env = SupportTicketEnv(level="easy", seed=42)
         obs = env.reset()
-
         if obs is None:
-            print("  ✗ reset() returned None")
+            print(f"  {FAIL} reset() returned None")
             return False
 
         action = {
             "assign_category": "billing",
             "set_priority": "high",
-            "response": "We will resolve this.",
-            "escalate": False,
+            "response": "We will review the invoice and help resolve the charge.",
         }
-        obs2, reward, done, info = env.step(action)
-
+        _, reward, _, _ = env.step(action)
         if reward is None:
-            print("  ✗ step() returned None reward")
+            print(f"  {FAIL} step() returned None reward")
             return False
 
         if reward.score < -1.0 or reward.score > 1.0:
-            print(f"  ✗ Reward out of range: {reward.score}")
+            print(f"  {FAIL} Reward out of range: {reward.score}")
             return False
 
         state = env.state()
         if state is None:
-            print("  ✗ state() returned None")
+            print(f"  {FAIL} state() returned None")
             return False
 
-        print("  ✓ reset(), step(), state() working correctly")
+        if not hasattr(state, "ticket_resolved"):
+            print(f"  {FAIL} State model missing ticket_resolved")
+            return False
+
+        print(f"  {OK} reset(), step(), state() working correctly")
         return True
-    except Exception as e:
-        print(f"  ✗ Error testing environment: {e}")
+    except Exception as exc:
+        print(f"  {FAIL} Error testing environment: {exc}")
         return False
 
 
 def validate_grader():
     """Test grader function."""
-    print("✓ Validating grader...")
+    print(f"{OK} Validating grader...")
     try:
         from env.grader import grade_episode
 
         trajectory = [
             {
                 "observation": {"ticket_id": 1},
-                "action": {"assign_category": "billing"},
+                "action": {
+                    "assign_category": "billing",
+                    "set_priority": "high",
+                    "response": "We will investigate the charge and help resolve it.",
+                },
                 "reward": {"score": 0.8, "breakdown": {}},
             }
         ]
         score = grade_episode(trajectory)
-
         if not isinstance(score, float) or score < 0.0 or score > 1.0:
-            print(f"  ✗ Grader returned invalid score: {score}")
+            print(f"  {FAIL} Grader returned invalid score: {score}")
             return False
 
-        print("  ✓ Grader working correctly")
+        print(f"  {OK} Grader working correctly")
         return True
-    except Exception as e:
-        print(f"  ✗ Error testing grader: {e}")
+    except Exception as exc:
+        print(f"  {FAIL} Error testing grader: {exc}")
         return False
 
 
 def validate_dockerfile():
-    """Check Dockerfile exists and has key features."""
-    print("✓ Validating Dockerfile...")
+    """Check Dockerfile exists and has key deployment features."""
+    print(f"{OK} Validating Dockerfile...")
     try:
-        with open("Dockerfile", "r") as f:
-            content = f.read()
+        with open("Dockerfile", "r", encoding="utf-8") as handle:
+            content = handle.read()
 
         if "python" not in content.lower():
-            print("  ✗ Dockerfile missing Python")
+            print(f"  {FAIL} Dockerfile missing Python")
             return False
 
         if "7860" not in content and "8080" not in content:
-            print("  ✗ Dockerfile not exposing port 7860 or 8080")
+            print(f"  {FAIL} Dockerfile not exposing port 7860 or 8080")
             return False
 
-        print("  ✓ Dockerfile valid")
+        if "requirements.txt" not in content:
+            print(f"  {WARN} Dockerfile does not install from requirements.txt")
+        else:
+            print(f"  {OK} Dockerfile installs dependencies from requirements.txt")
+
+        print(f"  {OK} Dockerfile valid")
         return True
-    except Exception as e:
-        print(f"  ✗ Error validating Dockerfile: {e}")
+    except Exception as exc:
+        print(f"  {FAIL} Error validating Dockerfile: {exc}")
+        return False
+
+
+def validate_baseline():
+    """Check baseline script is importable."""
+    print(f"{OK} Validating baseline script...")
+    try:
+        from scripts.baseline import run_baseline
+
+        if not callable(run_baseline):
+            print(f"  {FAIL} run_baseline is not callable")
+            return False
+
+        print(f"  {OK} Baseline script is importable")
+        return True
+    except Exception as exc:
+        print(f"  {FAIL} Error validating baseline script: {exc}")
         return False
 
 
 def validate_readme():
-    """Check README exists and has required sections."""
-    print("✓ Validating README...")
+    """Check README includes the required compliance sections."""
+    print(f"{OK} Validating README...")
     try:
-        with open("README.md", "r") as f:
-            content = f.read()
+        with open("README.md", "r", encoding="utf-8") as handle:
+            content = handle.read()
 
-        required_sections = ["Overview", "Tasks", "Reward", "Deployment"]
+        required_sections = [
+            "Overview",
+            "Observation Space",
+            "Action Space",
+            "Reward Function",
+            "Setup",
+            "Docker and Hugging Face Spaces",
+        ]
         for section in required_sections:
             if section.lower() not in content.lower():
-                print(f"  ! WARNING: Missing section '{section}' in README")
+                print(f"  {FAIL} Missing section '{section}' in README")
+                return False
 
-        print("  ✓ README present")
+        print(f"  {OK} README present and includes required sections")
         return True
-    except Exception as e:
-        print(f"  ✗ Error validating README: {e}")
+    except Exception as exc:
+        print(f"  {FAIL} Error validating README: {exc}")
         return False
 
 
@@ -194,6 +249,7 @@ def main():
         validate_environment,
         validate_grader,
         validate_dockerfile,
+        validate_baseline,
         validate_readme,
     ]
 
@@ -201,13 +257,13 @@ def main():
 
     print("\n" + "=" * 60)
     if all(results):
-        print("✓ ALL CHECKS PASSED - Ready to submit!")
+        print(f"{OK} ALL CHECKS PASSED - Ready to submit!")
         print("=" * 60 + "\n")
         return 0
-    else:
-        print("✗ Some checks failed - Please fix issues above")
-        print("=" * 60 + "\n")
-        return 1
+
+    print(f"{FAIL} Some checks failed - Please fix issues above")
+    print("=" * 60 + "\n")
+    return 1
 
 
 if __name__ == "__main__":

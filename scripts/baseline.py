@@ -1,11 +1,21 @@
 import os
 import re
-from typing import Dict, Tuple
+import sys
+from typing import Dict
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from openai import OpenAI
 
 from env.environment import SupportTicketEnv
 from env.grader import grade_episode
+
+
+MOCK_ANSWER = (
+    "Category: billing\n"
+    "Priority: high\n"
+    "Response: We apologize for the inconvenience. We will investigate the billing issue immediately."
+)
 
 
 def parse_answer(text: str) -> Dict[str, str]:
@@ -32,12 +42,34 @@ def parse_answer(text: str) -> Dict[str, str]:
     return parsed
 
 
-def run_baseline():
+def generate_answer(prompt: str) -> str:
+    use_mock = os.getenv("BASELINE_USE_MOCK", "").lower() in {"1", "true", "yes"}
     api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise EnvironmentError("OPENAI_API_KEY environment variable must be set")
-    client = OpenAI(api_key=api_key)
 
+    if use_mock:
+        return MOCK_ANSWER
+
+    if not api_key:
+        raise EnvironmentError(
+            "OPENAI_API_KEY environment variable must be set to run the baseline. "
+            "Set BASELINE_USE_MOCK=1 only if you want the offline mock fallback."
+        )
+
+    client = OpenAI(api_key=api_key)
+    completion = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "You are an accurate ticket triage model."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.0,
+        max_tokens=400,
+    )
+
+    return completion.choices[0].message.content or ""
+
+
+def run_baseline():
     levels = ["easy", "medium", "hard"]
     results = {}
 
@@ -60,21 +92,11 @@ def run_baseline():
                 "Response: <supportful agent message>\n"
             )
 
-            completion = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "You are an accurate ticket triage model."},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.0,
-                max_tokens=400,
-            )
-
-            answer = completion.choices[0].message["content"]
+            answer = generate_answer(prompt)
             action = parse_answer(answer)
 
             obs_next, reward, done, info = env.step(action)
-            trajectories.append({"observation": obs_next, "action": action, "reward": reward.dict()})
+            trajectories.append({"observation": obs_next, "action": action, "reward": reward.model_dump()})
 
         score = grade_episode(trajectories)
         results[level] = score

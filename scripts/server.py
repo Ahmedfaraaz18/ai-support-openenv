@@ -1,6 +1,5 @@
-import json
 import os
-from typing import Dict, List, Optional
+from typing import Any, Dict, List
 
 from flask import Flask, request, jsonify
 from openai import OpenAI
@@ -13,6 +12,12 @@ app = Flask(__name__)
 # Store active environments per session
 environments: Dict[str, SupportTicketEnv] = {}
 trajectories: Dict[str, List] = {}
+
+MOCK_ANSWER = (
+    "Category: billing\n"
+    "Priority: high\n"
+    "Response: We apologize for the inconvenience. We will investigate the billing issue immediately."
+)
 
 
 def serialize_observation(obs):
@@ -27,6 +32,71 @@ def serialize_reward(reward):
     if hasattr(reward, "model_dump"):
         return reward.model_dump()
     return reward.dict() if hasattr(reward, "dict") else reward
+
+
+def generate_answer(prompt: str) -> str:
+    use_mock = os.getenv("BASELINE_USE_MOCK", "").lower() in {"1", "true", "yes"}
+    api_key = os.getenv("OPENAI_API_KEY")
+
+    if use_mock:
+        return MOCK_ANSWER
+
+    if not api_key:
+        raise EnvironmentError(
+            "OPENAI_API_KEY environment variable must be set to run the baseline. "
+            "Set BASELINE_USE_MOCK=1 only if you want the offline mock fallback."
+        )
+
+    client = OpenAI(api_key=api_key)
+    completion = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": "You are an accurate ticket triage model.",
+            },
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.0,
+        max_tokens=400,
+    )
+
+    return completion.choices[0].message.content or ""
+
+
+@app.route("/", methods=["GET"])
+def index():
+    """Simple landing page for browser-based checks."""
+    return """
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>OpenEnv Support Agent</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.5; }
+          h1 { margin-bottom: 8px; }
+          code { background: #f4f4f4; padding: 2px 6px; border-radius: 4px; }
+          ul { padding-left: 20px; }
+        </style>
+      </head>
+      <body>
+        <h1>OpenEnv Support Agent</h1>
+        <p>The server is running.</p>
+        <p>Useful endpoints:</p>
+        <ul>
+          <li><code>GET /health</code></li>
+          <li><code>GET /tasks</code></li>
+          <li><code>POST /reset</code></li>
+          <li><code>POST /step</code></li>
+          <li><code>POST /state</code></li>
+          <li><code>POST /grader</code></li>
+          <li><code>POST /baseline</code></li>
+        </ul>
+      </body>
+    </html>
+    """, 200
 
 
 @app.route("/health", methods=["GET"])
@@ -91,8 +161,8 @@ def step():
                 "info": info,
                 "state": {
                     "step_count": state.step_count,
-                    "resolved": state.resolved,
-                    "escalated": state.escalated,
+                    "resolved": state.ticket_resolved,
+                    "ticket_resolved": state.ticket_resolved,
                     "total_reward": state.total_reward,
                 },
             }
@@ -116,8 +186,8 @@ def get_state():
     return jsonify(
         {
             "step_count": state.step_count,
-            "resolved": state.resolved,
-            "escalated": state.escalated,
+            "resolved": state.ticket_resolved,
+            "ticket_resolved": state.ticket_resolved,
             "total_reward": state.total_reward,
         }
     ), 200
@@ -152,29 +222,24 @@ def tasks():
                 },
                 {
                     "name": "hard",
-                    "description": "Multiple issues, emotional users, escalation may be required",
+                    "description": "Multiple issues, emotional users, high reasoning required",
                 },
             ],
             "action_schema": {
                 "assign_category": {
                     "type": "string",
-                    "choices": ["billing", "technical", "account", "abuse", "other"],
+                    "choices": ["billing", "technical", "account", "other"],
                     "required": True,
                 },
                 "set_priority": {
                     "type": "string",
-                    "choices": ["low", "medium", "high", "critical"],
+                    "choices": ["low", "medium", "high"],
                     "required": True,
                 },
                 "response": {
                     "type": "string",
                     "required": True,
                     "description": "Support agent response message",
-                },
-                "escalate": {
-                    "type": "boolean",
-                    "required": True,
-                    "description": "Whether to escalate to human",
                 },
             },
         }
@@ -184,17 +249,11 @@ def tasks():
 @app.route("/baseline", methods=["POST"])
 def baseline():
     """Run baseline agent on all tasks and return scores."""
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return jsonify({"error": "OPENAI_API_KEY not set"}), 500
-
     try:
-        client = OpenAI(api_key=api_key)
-
         results = {}
         for level in ["easy", "medium", "hard"]:
             env = SupportTicketEnv(level=level, seed=42)
-            scores = []
+            trajectories_for_level = []
 
             for _ in range(3):
                 obs = env.reset()
@@ -203,36 +262,27 @@ def baseline():
                     f"Ticket ID: {obs.ticket_id}\n"
                     f"Message: {obs.message}\n"
                     f"User history: {obs.user_history}\n"
-                    f"Sentiment: {obs.sentiment}\n"
-                    f"Urgency: {obs.urgency_hint}\n"
-                    f"Previous attempts: {obs.previous_attempts}\n"
+                    f"Current status: {obs.current_status}\n"
+                    f"Urgency hint: {obs.urgency_hint}\n"
                     f"Respond with exact format:\n"
-                    f"Category: <billing/technical/account/abuse/other>\n"
-                    f"Priority: <low/medium/high/critical>\n"
+                    f"Category: <billing/technical/account/other>\n"
+                    f"Priority: <low/medium/high>\n"
                     f"Response: <supportful agent message>\n"
-                    f"Escalate: <true/false>\n"
                 )
 
-                completion = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "You are an accurate ticket triage model.",
-                        },
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=0.0,
-                    max_tokens=400,
-                )
-
-                answer = completion.choices[0].message.content
+                answer = generate_answer(prompt)
                 action = parse_answer(answer)
 
                 obs_next, reward, done, info = env.step(action)
-                scores.append(reward.score)
+                trajectories_for_level.append(
+                    {
+                        "observation": serialize_observation(obs_next),
+                        "action": action,
+                        "reward": serialize_reward(reward),
+                    }
+                )
 
-            results[level] = sum(scores) / len(scores)
+            results[level] = grade_episode(trajectories_for_level)
 
         return (
             jsonify({
@@ -245,7 +295,7 @@ def baseline():
         return jsonify({"error": str(e)}), 500
 
 
-def parse_answer(text: str) -> Dict[str, any]:
+def parse_answer(text: str) -> Dict[str, Any]:
     """Parse model response into action."""
     import re
 
@@ -253,7 +303,6 @@ def parse_answer(text: str) -> Dict[str, any]:
         "assign_category": "other",
         "set_priority": "low",
         "response": "",
-        "escalate": False,
     }
     lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
 
@@ -270,13 +319,6 @@ def parse_answer(text: str) -> Dict[str, any]:
                 .strip()
                 .lower()
             )
-        elif line.lower().startswith("escalate"):
-            val = (
-                re.sub(r"^.*?:", "", line, flags=re.IGNORECASE)
-                .strip()
-                .lower()
-            )
-            parsed["escalate"] = val in ["true", "yes", "1"]
         elif line.lower().startswith("response"):
             parsed["response"] = (
                 re.sub(r"^.*?:", "", line, flags=re.IGNORECASE).strip()

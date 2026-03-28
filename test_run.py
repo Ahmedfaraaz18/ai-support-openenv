@@ -15,7 +15,7 @@ action = Action(
     response="We are sorry, we will resolve your issue."
 )
 
-obs2, reward, done, info = env.step(action.dict())
+obs2, reward, done, info = env.step(action.model_dump())
 print("Next Observation:", obs2)
 print("Reward:", reward)
 print("Done:", done)
