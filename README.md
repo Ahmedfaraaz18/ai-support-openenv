@@ -1,9 +1,4 @@
-
-
-# AI Customer Support Triage + Escalation Environment
-=======
 # AI Customer Support Triage Environment
->>>>>>> a77f3af (updated files)
 
 This repository implements a realistic OpenEnv task for customer support ticket triage. The agent receives support tickets, classifies them into the right queue, assigns a handling priority, and drafts a helpful reply. The task is operational and real-world, not a game or toy benchmark.
 
@@ -22,7 +17,7 @@ The benchmark is designed to satisfy the OpenEnv hackathon requirements:
 - Three graded task levels from easy to hard
 - Dense reward shaping with partial-progress signals
 - Deterministic episode grading in the `0.0` to `1.0` range
-- Reproducible baseline inference script
+- Baseline inference support through the OpenAI API client
 - Docker deployment suitable for Hugging Face Spaces
 
 ## Observation Space
@@ -160,7 +155,7 @@ python validate.py
 
 ## API Server
 
-The Flask API is implemented in [scripts/server.py](/c:/Users/ahmed/OneDrive/Desktop/openenv-support-agent/scripts/server.py).
+The main environment API is implemented in [scripts/server.py](/c:/Users/ahmed/OneDrive/Desktop/openenv-support-agent/scripts/server.py).
 
 Run it locally with:
 
@@ -168,7 +163,13 @@ Run it locally with:
 python scripts/server.py
 ```
 
-Endpoints:
+Browser-friendly URLs:
+
+- `http://localhost:7860/`
+- `http://localhost:7860/health`
+- `http://localhost:7860/tasks`
+
+API endpoints:
 
 - `GET /health`
 - `POST /reset`
@@ -178,10 +179,24 @@ Endpoints:
 - `GET /tasks`
 - `POST /baseline`
 
+## FastAPI App
+
+A lightweight FastAPI entrypoint is also available in [app.py](/c:/Users/ahmed/OneDrive/Desktop/openenv-support-agent/app.py).
+
+Run it locally with:
+
+```bash
+uvicorn app:app --host 127.0.0.1 --port 8010
+```
+
+Browser-friendly FastAPI URLs:
+
+- `http://localhost:8010/`
+- `http://localhost:8010/docs`
+
 ## Docker and Hugging Face Spaces
 
-The repository includes a Dockerfile that installs dependencies from [requirements.txt](/c:/Users/ahmed/OneDrive/Desktop/openenv-support-agent/requirements.txt) and serves the Flask app on port `7860`.
-Inside the container, the app is started with `gunicorn` rather than Flask's development server.
+The repository includes a Dockerfile that installs dependencies from [requirements.txt](/c:/Users/ahmed/OneDrive/Desktop/openenv-support-agent/requirements.txt) and serves the Flask app on port `7860`. Inside the container, the app is started with `gunicorn` rather than Flask's development server.
 
 Build and run locally:
 
@@ -204,6 +219,29 @@ docker run -p 7860:7860 openenv-support-agent
    `POST /baseline`
 8. Share the generated Space URL in your submission.
 
+## Technical Details
+
+### Deterministic Grading
+
+The grader evaluates episodes consistently:
+
+1. Computes average reward across all steps
+2. Compares final action against expected outcomes
+3. Returns normalized `0.0` to `1.0` score
+
+Reproducibility comes from fixed seeds in the environment examples.
+
+### Multi-Step Episodes
+
+Each episode allows up to 3 steps. Episodes terminate when the ticket is resolved or when the maximum step limit is reached.
+
+### Reward Shaping Philosophy
+
+- Dense rewards instead of purely terminal feedback
+- Partial credit for partially correct behavior
+- Penalties for invalid or empty actions
+- Learning-oriented signal across the full trajectory
+
 ## Project Structure
 
 ```text
@@ -216,6 +254,7 @@ docker run -p 7860:7860 openenv-support-agent
 |-- scripts/
 |   |-- baseline.py
 |   `-- server.py
+|-- app.py
 |-- configs/
 |-- data/
 |-- Dockerfile
@@ -226,61 +265,4 @@ docker run -p 7860:7860 openenv-support-agent
 
 ## License
 
-<<<<<<< HEAD
-## 📝 Technical Details
-
-### Deterministic Grading
-
-The grader evaluates episodes consistently:
-1. Computes average reward across all steps
-2. Compares final action against expected outcomes
-3. Returns normalized 0.0–1.0 score
-
-Reproducible with fixed seeds (seed=42 in all examples).
-
-### Multi-Step Episodes
-
-Each episode allows up to 3 steps:
-- **Step 1**: Initial response to ticket
-- **Step 2**: Refinement or escalation decision
-- **Step 3**: Final resolution or confirmed escalation
-
-Episodes terminate when: resolved=True OR escalated=True OR step_count=3
-
-### Reward Shaping Philosophy
-
-- **Dense rewards** (not just terminal): agent gets feedback each step
-- **Partial credit**: wrong category still earns some points
-- **Incentive alignment**: penalizing bad escalation, rewarding politeness
-- **Learning-friendly**: reward signal guides toward human-like behavior
-
----
-
-## 🎓 Further Reading
-
-- [OpenEnv GitHub](https://github.com/meta-pytorch/OpenEnv)
-- [Gym Interface Documentation](https://gymnasium.farama.org/)
-- [Reward Shaping in RL](https://arxiv.org/abs/1811.02762)
-
----
-
-## 📬 Support
-
-For hackathon-specific questions: `help_openenvhackathon@scaler.com`
-
----
-
-## 📄 License
-
-MIT (Open for educational and commercial use)
-
----
-
-**Built for**: OpenEnv Hackathon 2026  
-**Submission Deadline**: 7 April 2026 11:59 PM UTC
-
-# ai-support-openenv
-OpenEnv-based AI environment for customer support triage and escalation, featuring realistic ticket simulation, multi-step decision making, and reward shaping for agent evaluation.
-=======
 MIT
-
