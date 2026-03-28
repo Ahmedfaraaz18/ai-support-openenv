@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 # AI Customer Support Triage + Escalation Environment
 
 ## 🎯 Overview
@@ -420,7 +420,5 @@ MIT (Open for educational and commercial use)
 **Built for**: OpenEnv Hackathon 2026  
 **Submission Deadline**: 7 April 2026 11:59 PM UTC
 
-=======
 # ai-support-openenv
 OpenEnv-based AI environment for customer support triage and escalation, featuring realistic ticket simulation, multi-step decision making, and reward shaping for agent evaluation.
->>>>>>> 33e0fee95383dba072e8f30122fe9dc478e97064
