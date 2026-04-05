@@ -14,6 +14,18 @@ environments: Dict[str, SupportTicketEnv] = {}
 trajectories: Dict[str, List] = {}
 
 
+def get_request_data() -> Dict[str, Any]:
+    """Accept JSON, form data, query params, or empty POST bodies."""
+    data = request.get_json(silent=True)
+    if isinstance(data, dict):
+        return data
+    if request.form:
+        return request.form.to_dict(flat=True)
+    if request.args:
+        return request.args.to_dict(flat=True)
+    return {}
+
+
 def serialize_observation(obs):
     """Convert Pydantic Observation to dict."""
     if hasattr(obs, "model_dump"):
@@ -72,7 +84,7 @@ def health():
 @app.route("/reset", methods=["POST"])
 def reset():
     """Reset environment and return initial observation."""
-    data = request.get_json() or {}
+    data = get_request_data()
     level = data.get("level", "easy")
     session_id = data.get("session_id", "default")
 
@@ -94,7 +106,7 @@ def reset():
 @app.route("/step", methods=["POST"])
 def step():
     """Execute one step in the environment."""
-    data = request.get_json() or {}
+    data = get_request_data()
     session_id = data.get("session_id", "default")
     action = data.get("action", {})
 
@@ -138,7 +150,7 @@ def step():
 @app.route("/state", methods=["POST"])
 def get_state():
     """Get current environment state."""
-    data = request.get_json() or {}
+    data = get_request_data()
     session_id = data.get("session_id", "default")
 
     if session_id not in environments:
@@ -160,7 +172,7 @@ def get_state():
 @app.route("/grader", methods=["POST"])
 def grader():
     """Compute episode grade."""
-    data = request.get_json() or {}
+    data = get_request_data()
     session_id = data.get("session_id", "default")
 
     if session_id not in trajectories or not trajectories[session_id]:
