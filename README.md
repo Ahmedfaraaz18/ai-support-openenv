@@ -6,7 +6,7 @@ colorTo: green
 sdk: docker
 app_port: 7860
 pinned: false
-short_description: OpenEnv customer support triage environment deployed on Hugging Face Spaces.
+short_description: OpenEnv customer support triage environment.
 ---
 
 # AI Customer Support Triage Environment
