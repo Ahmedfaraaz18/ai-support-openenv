@@ -16,12 +16,16 @@ dependencies = [
   "flask",
   "fastapi",
   "gunicorn",
+  "openenv-core>=0.2.0",
   "openai",
   "pydantic",
   "python-dotenv",
   "pyyaml",
   "uvicorn",
 ]
+
+[project.scripts]
+server = "scripts.server:main"
 
 [tool.setuptools]
 packages = ["env", "scripts"]

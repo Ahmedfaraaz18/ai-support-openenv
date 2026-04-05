@@ -285,6 +285,10 @@ def baseline():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+def main():
+    """Console entry point for local or packaged server startup."""
+    app.run(host="0.0.0.0", port=7860, debug=False)
+
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=7860, debug=False)
+    main()
