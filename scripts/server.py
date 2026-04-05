@@ -40,9 +40,32 @@ def serialize_reward(reward):
     return reward.dict() if hasattr(reward, "dict") else reward
 
 
-@app.route("/", methods=["GET"])
+def build_reset_response(data: Dict[str, Any]):
+    """Reset environment and return the initial observation payload."""
+    level = data.get("level", "easy")
+    session_id = data.get("session_id", "default")
+
+    env = SupportTicketEnv(level=level, seed=42)
+    obs = env.reset()
+
+    environments[session_id] = env
+    trajectories[session_id] = []
+
+    return jsonify(
+        {
+            "observation": serialize_observation(obs),
+            "session_id": session_id,
+            "level": level,
+        }
+    ), 200
+
+
+@app.route("/", methods=["GET", "POST"])
 def index():
-    """Simple landing page for browser-based checks."""
+    """Landing page for GET and reset-compatible POST for validator checks."""
+    if request.method == "POST":
+        return build_reset_response(get_request_data())
+
     return """
     <!doctype html>
     <html lang="en">
@@ -84,23 +107,7 @@ def health():
 @app.route("/reset", methods=["POST"])
 def reset():
     """Reset environment and return initial observation."""
-    data = get_request_data()
-    level = data.get("level", "easy")
-    session_id = data.get("session_id", "default")
-
-    env = SupportTicketEnv(level=level, seed=42)
-    obs = env.reset()
-
-    environments[session_id] = env
-    trajectories[session_id] = []
-
-    return jsonify(
-        {
-            "observation": serialize_observation(obs),
-            "session_id": session_id,
-            "level": level,
-        }
-    ), 200
+    return build_reset_response(get_request_data())
 
 
 @app.route("/step", methods=["POST"])
