@@ -1,0 +1,8 @@
+pydantic
+openai
+python-dotenv
+flask
+pyyaml
+gunicorn
+fastapi
+uvicorn
