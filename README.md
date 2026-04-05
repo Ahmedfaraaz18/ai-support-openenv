@@ -124,14 +124,14 @@ set BASELINE_USE_MOCK=1
 python inference.py
 ```
 
-Mock-mode output on this repo:
+The script emits machine-readable stdout logs using strict `[START]`, `[STEP]`, and `[END]` records. Each line is followed by a compact JSON payload.
+
+Mock-mode output on this repo looks like:
 
 ```text
-Baseline task scores:
-  easy: 0.325
-  medium: 0.744
-  hard: 0.718
-Overall score: 0.595
+[START] {"episodes_per_level":5,"levels":["easy","medium","hard"],"mock_mode":true,"model_name":"mock"}
+[STEP] {"action":{"assign_category":"billing","response":"We apologize for the inconvenience. We will investigate the billing issue immediately.","set_priority":"high"},"done":true,"episode":1,"info":{"expected_category":"billing","expected_priority":"high","invalid_reasons":[],"matched_keywords":0.75,"step_count":1},"level":"easy","observation":{"current_status":"open","message":"I was charged twice for my last invoice, please fix it.","ticket_id":1,"urgency_hint":"high","user_history":["Last month payment double charged","Reached out via chat"]},"reward":{"breakdown":{"category":1.0,"penalty":0.0,"priority":1.0,"response":0.75},"score":0.925},"state":{"step_count":1,"ticket_resolved":true,"total_reward":0.925}}
+[END] {"overall_score":0.5953125,"task_scores":{"easy":0.325,"hard":0.718125,"medium":0.7428125}}
 ```
 
 On Linux or macOS:

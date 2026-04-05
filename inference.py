@@ -1,6 +1,7 @@
+import json
 import os
 import re
-from typing import Dict
+from typing import Any, Dict, List
 
 from openai import OpenAI
 
@@ -13,6 +14,22 @@ MOCK_ANSWER = (
     "Priority: high\n"
     "Response: We apologize for the inconvenience. We will investigate the billing issue immediately."
 )
+
+LEVELS = ["easy", "medium", "hard"]
+EPISODES_PER_LEVEL = 5
+
+
+def emit_log(tag: str, **fields: Any) -> None:
+    ordered = {key: fields[key] for key in sorted(fields)}
+    print(f"{tag} {json.dumps(ordered, ensure_ascii=True, separators=(',', ':'))}")
+
+
+def serialize_model(value: Any) -> Any:
+    if hasattr(value, "model_dump"):
+        return value.model_dump()
+    if hasattr(value, "dict"):
+        return value.dict()
+    return value
 
 
 def parse_answer(text: str) -> Dict[str, str]:
@@ -39,7 +56,7 @@ def parse_answer(text: str) -> Dict[str, str]:
     return parsed
 
 
-def get_client() -> OpenAI:
+def get_client() -> OpenAI | None:
     api_base_url = os.getenv("API_BASE_URL")
     model_name = os.getenv("MODEL_NAME")
     hf_token = os.getenv("HF_TOKEN")
@@ -83,53 +100,72 @@ def generate_answer(prompt: str, client: OpenAI | None, model_name: str | None) 
     return completion.choices[0].message.content or ""
 
 
-def run_inference() -> Dict[str, float]:
-    levels = ["easy", "medium", "hard"]
-    results: Dict[str, float] = {}
+def build_prompt(obs: Any) -> str:
+    return (
+        "You are a customer support triage assistant.\n"
+        f"Ticket ID: {obs.ticket_id}\n"
+        f"Message: {obs.message}\n"
+        f"User history: {obs.user_history}\n"
+        f"Current status: {obs.current_status}\n"
+        f"Urgency hint: {obs.urgency_hint}\n"
+        "Respond with exact format:\n"
+        "Category: <billing/technical/account/other>\n"
+        "Priority: <low/medium/high>\n"
+        "Response: <supportful agent message>\n"
+    )
 
+
+def run_inference() -> Dict[str, float]:
+    results: Dict[str, float] = {}
     use_mock = os.getenv("BASELINE_USE_MOCK", "").lower() in {"1", "true", "yes"}
     client = None if use_mock else get_client()
     model_name = os.getenv("MODEL_NAME")
 
-    for level in levels:
+    emit_log(
+        "[START]",
+        episodes_per_level=EPISODES_PER_LEVEL,
+        levels=LEVELS,
+        mock_mode=use_mock,
+        model_name=model_name or "mock",
+    )
+
+    for level in LEVELS:
         env = SupportTicketEnv(level=level, seed=42)
-        trajectories = []
+        trajectories: List[Dict[str, Any]] = []
 
-        for _ in range(5):
+        for episode_index in range(1, EPISODES_PER_LEVEL + 1):
             obs = env.reset()
-            prompt = (
-                "You are a customer support triage assistant.\n"
-                f"Ticket ID: {obs.ticket_id}\n"
-                f"Message: {obs.message}\n"
-                f"User history: {obs.user_history}\n"
-                f"Current status: {obs.current_status}\n"
-                f"Urgency hint: {obs.urgency_hint}\n"
-                "Respond with exact format:\n"
-                "Category: <billing/technical/account/other>\n"
-                "Priority: <low/medium/high>\n"
-                "Response: <supportful agent message>\n"
-            )
-
-            answer = generate_answer(prompt, client, model_name)
+            answer = generate_answer(build_prompt(obs), client, model_name)
             action = parse_answer(answer)
-            obs_next, reward, _, _ = env.step(action)
-            trajectories.append(
-                {"observation": obs_next, "action": action, "reward": reward.model_dump()}
+            obs_next, reward, done, info = env.step(action)
+            trajectory_step = {
+                "observation": serialize_model(obs_next),
+                "action": action,
+                "reward": serialize_model(reward),
+            }
+            trajectories.append(trajectory_step)
+
+            emit_log(
+                "[STEP]",
+                action=action,
+                done=done,
+                episode=episode_index,
+                info=info,
+                level=level,
+                observation=serialize_model(obs),
+                reward=serialize_model(reward),
+                state=serialize_model(env.state()),
             )
 
         results[level] = grade_episode(trajectories)
 
+    overall = sum(results.values()) / len(results)
+    emit_log("[END]", overall_score=overall, task_scores=results)
     return results
 
 
 def main():
-    results = run_inference()
-    print("Baseline task scores:")
-    for level, score in results.items():
-        print(f"  {level}: {score:.3f}")
-
-    overall = sum(results.values()) / len(results)
-    print(f"Overall score: {overall:.3f}")
+    run_inference()
 
 
 if __name__ == "__main__":

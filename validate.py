@@ -4,6 +4,9 @@ Pre-submission validation script for the OpenEnv environment.
 Run this before submitting to ensure the repo is structurally complete.
 """
 
+import json
+import os
+import subprocess
 from pathlib import Path
 import sys
 
@@ -221,7 +224,40 @@ def validate_inference_script():
             print(f"  {FAIL} run_inference is not callable")
             return False
 
-        print(f"  {OK} inference.py is importable")
+        env = os.environ.copy()
+        env["BASELINE_USE_MOCK"] = "1"
+        result = subprocess.run(
+            [sys.executable, "inference.py"],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        if len(lines) < 3:
+            print(f"  {FAIL} inference.py did not emit enough structured log lines")
+            return False
+
+        if not lines[0].startswith("[START] "):
+            print(f"  {FAIL} inference.py stdout must begin with [START]")
+            return False
+
+        if not any(line.startswith("[STEP] ") for line in lines):
+            print(f"  {FAIL} inference.py stdout must include [STEP] lines")
+            return False
+
+        if not lines[-1].startswith("[END] "):
+            print(f"  {FAIL} inference.py stdout must end with [END]")
+            return False
+
+        for line in lines:
+            tag, payload = line.split(" ", 1)
+            if tag not in {"[START]", "[STEP]", "[END]"}:
+                print(f"  {FAIL} inference.py emitted unexpected log tag: {tag}")
+                return False
+            json.loads(payload)
+
+        print(f"  {OK} inference.py is importable and emits structured logs")
         return True
     except Exception as exc:
         print(f"  {FAIL} Error validating inference script: {exc}")
