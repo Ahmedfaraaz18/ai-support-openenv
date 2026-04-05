@@ -1,3 +1,14 @@
+---
+title: OpenEnv Support Agent
+emoji: 🤖
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 7860
+pinned: false
+short_description: OpenEnv customer support triage environment deployed on Hugging Face Spaces.
+---
+
 # AI Customer Support Triage Environment
 
 This repository implements a realistic OpenEnv task for customer support ticket triage. The agent receives support tickets, classifies them into the right queue, assigns a handling priority, and drafts a helpful reply. The task is operational and real-world, not a game or toy benchmark.
