@@ -2,6 +2,13 @@ from typing import Any, Dict, List
 
 from .tasks import get_ticket_by_id
 
+EPSILON = 0.001
+
+
+def _clamp_open_unit_interval(score: float) -> float:
+    """Keep platform-facing task scores strictly inside (0, 1)."""
+    return float(min(1.0 - EPSILON, max(EPSILON, score)))
+
 
 def grade_episode(trajectory: List[Dict[str, Any]]) -> float:
     """Grade an episode trajectory deterministically.
@@ -9,7 +16,7 @@ def grade_episode(trajectory: List[Dict[str, Any]]) -> float:
     trajectory: list of dicts {"observation": Observation, "action": Action, "reward": Reward}
     """
     if not trajectory:
-        return 0.0
+        return _clamp_open_unit_interval(0.0)
 
     total_score = 0.0
     for step in trajectory:
@@ -41,4 +48,4 @@ def grade_episode(trajectory: List[Dict[str, Any]]) -> float:
             response_score = matched / max(1, len(ticket.expected_keywords))
             normalized = 0.5 * normalized + 0.5 * ((0.4 * category_ok + 0.3 * priority_ok + 0.3 * response_score))
 
-    return float(max(0.0, min(1.0, normalized)))
+    return _clamp_open_unit_interval(float(max(0.0, min(1.0, normalized))))

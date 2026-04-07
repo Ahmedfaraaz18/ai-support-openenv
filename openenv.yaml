@@ -18,9 +18,18 @@ action_space:
     type: str
 reward_range: [-1.0, 1.0]
 tasks:
-  - name: easy
+  - id: easy
+    name: easy
+    difficulty: easy
     description: clear intent tickets, single issue
-  - name: medium
+    grader: true
+  - id: medium
+    name: medium
+    difficulty: medium
     description: ambiguous tickets, 2 possible categories
-  - name: hard
+    grader: true
+  - id: hard
+    name: hard
+    difficulty: hard
     description: multi-problem tickets, noisy text, conflicting priorities
+    grader: true

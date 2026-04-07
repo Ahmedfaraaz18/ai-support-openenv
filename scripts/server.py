@@ -196,16 +196,25 @@ def tasks():
         {
             "tasks": [
                 {
+                    "id": "easy",
                     "name": "easy",
+                    "difficulty": "easy",
                     "description": "Single clear issue, no escalation needed",
+                    "grader": True,
                 },
                 {
+                    "id": "medium",
                     "name": "medium",
+                    "difficulty": "medium",
                     "description": "Ambiguous intent, moderate reasoning required",
+                    "grader": True,
                 },
                 {
+                    "id": "hard",
                     "name": "hard",
+                    "difficulty": "hard",
                     "description": "Multiple issues, emotional users, high reasoning required",
+                    "grader": True,
                 },
             ],
             "action_schema": {
