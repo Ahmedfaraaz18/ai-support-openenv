@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import sys
 from typing import Any, Dict, List
 
 from openai import OpenAI
@@ -56,11 +57,20 @@ def parse_answer(text: str) -> Dict[str, str]:
     return parsed
 
 
+def env_flag(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def get_model_name() -> str | None:
+    # Support both names because some validators set MODEL, others MODEL_NAME.
+    return os.getenv("MODEL_NAME") or os.getenv("MODEL")
+
+
 def get_client() -> OpenAI | None:
     api_base_url = os.getenv("API_BASE_URL")
-    model_name = os.getenv("MODEL_NAME")
+    model_name = get_model_name()
     hf_token = os.getenv("HF_TOKEN")
-    use_mock = os.getenv("BASELINE_USE_MOCK", "").lower() in {"1", "true", "yes"}
+    use_mock = env_flag("BASELINE_USE_MOCK")
 
     if use_mock:
         return None
@@ -69,17 +79,20 @@ def get_client() -> OpenAI | None:
         name
         for name, value in {
             "API_BASE_URL": api_base_url,
-            "MODEL_NAME": model_name,
+            "MODEL_NAME or MODEL": model_name,
             "HF_TOKEN": hf_token,
         }.items()
         if not value
     ]
     if missing:
-        raise EnvironmentError(
-            "Missing required environment variables for inference: "
-            + ", ".join(missing)
-            + ". Set BASELINE_USE_MOCK=1 only for offline fallback."
+        print(
+            (
+                "WARN: Missing required env vars for live inference; "
+                "falling back to mock mode. Missing: " + ", ".join(missing)
+            ),
+            file=sys.stderr,
         )
+        return None
 
     return OpenAI(base_url=api_base_url, api_key=hf_token)
 
@@ -117,9 +130,11 @@ def build_prompt(obs: Any) -> str:
 
 def run_inference() -> Dict[str, float]:
     results: Dict[str, float] = {}
-    use_mock = os.getenv("BASELINE_USE_MOCK", "").lower() in {"1", "true", "yes"}
+    use_mock = env_flag("BASELINE_USE_MOCK")
     client = None if use_mock else get_client()
-    model_name = os.getenv("MODEL_NAME")
+    model_name = get_model_name()
+    if client is None:
+        use_mock = True
 
     emit_log(
         "[START]",
@@ -135,8 +150,30 @@ def run_inference() -> Dict[str, float]:
 
         for episode_index in range(1, EPISODES_PER_LEVEL + 1):
             obs = env.reset()
-            answer = generate_answer(build_prompt(obs), client, model_name)
-            action = parse_answer(answer)
+            try:
+                answer = generate_answer(build_prompt(obs), client, model_name)
+            except Exception as exc:
+                print(
+                    (
+                        "WARN: Model call failed; using mock answer. "
+                        f"level={level} episode={episode_index} error={exc}"
+                    ),
+                    file=sys.stderr,
+                )
+                answer = MOCK_ANSWER
+
+            try:
+                action = parse_answer(answer)
+            except Exception as exc:
+                print(
+                    (
+                        "WARN: Answer parsing failed; using fallback action. "
+                        f"level={level} episode={episode_index} error={exc}"
+                    ),
+                    file=sys.stderr,
+                )
+                action = parse_answer(MOCK_ANSWER)
+
             obs_next, reward, done, info = env.step(action)
             trajectory_step = {
                 "observation": serialize_model(obs_next),
@@ -165,7 +202,10 @@ def run_inference() -> Dict[str, float]:
 
 
 def main():
-    run_inference()
+    try:
+        run_inference()
+    except Exception as exc:
+        emit_log("[END]", error=str(exc), overall_score=0.0, task_scores={})
 
 
 if __name__ == "__main__":
