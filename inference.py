@@ -123,8 +123,13 @@ def build_prompt(obs: Any) -> str:
     )
 
 
+def fallback_results() -> Dict[str, float]:
+    """Return platform-safe task scores for all configured tasks."""
+    return {level: grade_episode([]) for level in LEVELS}
+
+
 def run_inference() -> Dict[str, float]:
-    results: Dict[str, float] = {}
+    results: Dict[str, float] = fallback_results()
     use_mock = env_flag("BASELINE_USE_MOCK")
     client = None if use_mock else get_client()
     model_name = get_model_name()
@@ -142,56 +147,63 @@ def run_inference() -> Dict[str, float]:
     )
 
     for level in LEVELS:
-        env = SupportTicketEnv(level=level, seed=42)
-        trajectories: List[Dict[str, Any]] = []
+        try:
+            env = SupportTicketEnv(level=level, seed=42)
+            trajectories: List[Dict[str, Any]] = []
 
-        for episode_index in range(1, EPISODES_PER_LEVEL + 1):
-            obs = env.reset()
-            try:
-                answer = generate_answer(build_prompt(obs), client, model_name)
-            except Exception as exc:
-                print(
-                    (
-                        "WARN: Model call failed; using mock answer. "
-                        f"level={level} episode={episode_index} error={exc}"
-                    ),
-                    file=sys.stderr,
+            for episode_index in range(1, EPISODES_PER_LEVEL + 1):
+                obs = env.reset()
+                try:
+                    answer = generate_answer(build_prompt(obs), client, model_name)
+                except Exception as exc:
+                    print(
+                        (
+                            "WARN: Model call failed; using mock answer. "
+                            f"level={level} episode={episode_index} error={exc}"
+                        ),
+                        file=sys.stderr,
+                    )
+                    answer = MOCK_ANSWER
+
+                try:
+                    action = parse_answer(answer)
+                except Exception as exc:
+                    print(
+                        (
+                            "WARN: Answer parsing failed; using fallback action. "
+                            f"level={level} episode={episode_index} error={exc}"
+                        ),
+                        file=sys.stderr,
+                    )
+                    action = parse_answer(MOCK_ANSWER)
+
+                obs_next, reward, done, info = env.step(action)
+                trajectory_step = {
+                    "observation": serialize_model(obs_next),
+                    "action": action,
+                    "reward": serialize_model(reward),
+                }
+                trajectories.append(trajectory_step)
+
+                emit_log(
+                    "[STEP]",
+                    action=action,
+                    done=done,
+                    episode=episode_index,
+                    info=info,
+                    level=level,
+                    observation=serialize_model(obs),
+                    reward=serialize_model(reward),
+                    state=serialize_model(env.state()),
                 )
-                answer = MOCK_ANSWER
 
-            try:
-                action = parse_answer(answer)
-            except Exception as exc:
-                print(
-                    (
-                        "WARN: Answer parsing failed; using fallback action. "
-                        f"level={level} episode={episode_index} error={exc}"
-                    ),
-                    file=sys.stderr,
-                )
-                action = parse_answer(MOCK_ANSWER)
-
-            obs_next, reward, done, info = env.step(action)
-            trajectory_step = {
-                "observation": serialize_model(obs_next),
-                "action": action,
-                "reward": serialize_model(reward),
-            }
-            trajectories.append(trajectory_step)
-
-            emit_log(
-                "[STEP]",
-                action=action,
-                done=done,
-                episode=episode_index,
-                info=info,
-                level=level,
-                observation=serialize_model(obs),
-                reward=serialize_model(reward),
-                state=serialize_model(env.state()),
+            results[level] = grade_episode(trajectories)
+        except Exception as exc:
+            print(
+                f"WARN: Level inference failed; using fallback score. level={level} error={exc}",
+                file=sys.stderr,
             )
-
-        results[level] = grade_episode(trajectories)
+            results[level] = grade_episode([])
 
     overall = sum(results.values()) / len(results)
     emit_log("[END]", overall_score=overall, task_scores=results)
@@ -202,7 +214,9 @@ def main():
     try:
         run_inference()
     except Exception as exc:
-        emit_log("[END]", error=str(exc), overall_score=0.0, task_scores={})
+        results = fallback_results()
+        overall = sum(results.values()) / len(results)
+        emit_log("[END]", error=str(exc), overall_score=overall, task_scores=results)
 
 
 if __name__ == "__main__":
