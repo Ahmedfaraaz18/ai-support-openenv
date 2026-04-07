@@ -68,8 +68,7 @@ def get_model_name() -> str | None:
 
 def get_client() -> OpenAI | None:
     api_base_url = os.getenv("API_BASE_URL")
-    model_name = get_model_name()
-    hf_token = os.getenv("HF_TOKEN")
+    api_key = os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("HF_TOKEN")
     use_mock = env_flag("BASELINE_USE_MOCK")
 
     if use_mock:
@@ -79,22 +78,18 @@ def get_client() -> OpenAI | None:
         name
         for name, value in {
             "API_BASE_URL": api_base_url,
-            "MODEL_NAME or MODEL": model_name,
-            "HF_TOKEN": hf_token,
+            "API_KEY": api_key,
         }.items()
         if not value
     ]
     if missing:
-        print(
-            (
-                "WARN: Missing required env vars for live inference; "
-                "falling back to mock mode. Missing: " + ", ".join(missing)
-            ),
-            file=sys.stderr,
+        raise EnvironmentError(
+            "Missing required environment variables for live inference: "
+            + ", ".join(missing)
+            + ". For offline testing only, set BASELINE_USE_MOCK=1."
         )
-        return None
 
-    return OpenAI(base_url=api_base_url, api_key=hf_token)
+    return OpenAI(base_url=api_base_url, api_key=api_key)
 
 
 def generate_answer(prompt: str, client: OpenAI | None, model_name: str | None) -> str:
@@ -133,6 +128,8 @@ def run_inference() -> Dict[str, float]:
     use_mock = env_flag("BASELINE_USE_MOCK")
     client = None if use_mock else get_client()
     model_name = get_model_name()
+    if not model_name:
+        model_name = "gpt-4o-mini"
     if client is None:
         use_mock = True
 
