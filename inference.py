@@ -33,6 +33,16 @@ def serialize_model(value: Any) -> Any:
     return value
 
 
+def serialize_reward_for_log(reward: Any) -> Any:
+    payload = serialize_model(reward)
+    if not isinstance(payload, dict):
+        return payload
+    score = payload.pop("score", None)
+    if score is not None:
+        payload["value"] = score
+    return payload
+
+
 def parse_answer(text: str) -> Dict[str, str]:
     parsed = {"assign_category": "other", "set_priority": "low", "response": ""}
     lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
@@ -219,7 +229,7 @@ def run_inference(enable_logs: bool = False) -> Dict[str, Any]:
                         info=info,
                         level=level,
                         observation=serialize_model(obs),
-                        reward=serialize_model(reward),
+                        reward=serialize_reward_for_log(reward),
                         state=serialize_model(env.state()),
                     )
 
