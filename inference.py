@@ -139,7 +139,7 @@ def build_result_payload(results: Dict[str, float]) -> Dict[str, Any]:
     }
 
 
-def run_inference() -> Dict[str, float]:
+def run_inference(enable_logs: bool = False) -> Dict[str, Any]:
     results: Dict[str, float] = fallback_results()
     use_mock = env_flag("BASELINE_USE_MOCK")
     model_name = get_model_name()
@@ -150,22 +150,24 @@ def run_inference() -> Dict[str, float]:
         try:
             client = get_client()
         except Exception as exc:
-            print(
-                f"WARN: Client initialization failed; using mock mode. error={exc}",
-                file=sys.stderr,
-            )
+            if enable_logs:
+                print(
+                    f"WARN: Client initialization failed; using mock mode. error={exc}",
+                    file=sys.stderr,
+                )
             client = None
             use_mock = True
     if client is None:
         use_mock = True
 
-    emit_log(
-        "[START]",
-        episodes_per_level=EPISODES_PER_LEVEL,
-        levels=LEVELS,
-        mock_mode=use_mock,
-        model_name=model_name or "mock",
-    )
+    if enable_logs:
+        emit_log(
+            "[START]",
+            episodes_per_level=EPISODES_PER_LEVEL,
+            levels=LEVELS,
+            mock_mode=use_mock,
+            model_name=model_name or "mock",
+        )
 
     for level in LEVELS:
         try:
@@ -177,25 +179,27 @@ def run_inference() -> Dict[str, float]:
                 try:
                     answer = generate_answer(build_prompt(obs), client, model_name)
                 except Exception as exc:
-                    print(
-                        (
-                            "WARN: Model call failed; using mock answer. "
-                            f"level={level} episode={episode_index} error={exc}"
-                        ),
-                        file=sys.stderr,
-                    )
+                    if enable_logs:
+                        print(
+                            (
+                                "WARN: Model call failed; using mock answer. "
+                                f"level={level} episode={episode_index} error={exc}"
+                            ),
+                            file=sys.stderr,
+                        )
                     answer = MOCK_ANSWER
 
                 try:
                     action = parse_answer(answer)
                 except Exception as exc:
-                    print(
-                        (
-                            "WARN: Answer parsing failed; using fallback action. "
-                            f"level={level} episode={episode_index} error={exc}"
-                        ),
-                        file=sys.stderr,
-                    )
+                    if enable_logs:
+                        print(
+                            (
+                                "WARN: Answer parsing failed; using fallback action. "
+                                f"level={level} episode={episode_index} error={exc}"
+                            ),
+                            file=sys.stderr,
+                        )
                     action = parse_answer(MOCK_ANSWER)
 
                 obs_next, reward, done, info = env.step(action)
@@ -206,34 +210,37 @@ def run_inference() -> Dict[str, float]:
                 }
                 trajectories.append(trajectory_step)
 
-                emit_log(
-                    "[STEP]",
-                    action=action,
-                    done=done,
-                    episode=episode_index,
-                    info=info,
-                    level=level,
-                    observation=serialize_model(obs),
-                    reward=serialize_model(reward),
-                    state=serialize_model(env.state()),
-                )
+                if enable_logs:
+                    emit_log(
+                        "[STEP]",
+                        action=action,
+                        done=done,
+                        episode=episode_index,
+                        info=info,
+                        level=level,
+                        observation=serialize_model(obs),
+                        reward=serialize_model(reward),
+                        state=serialize_model(env.state()),
+                    )
 
             results[level] = grade_episode(trajectories)
         except Exception as exc:
-            print(
-                f"WARN: Level inference failed; using fallback score. level={level} error={exc}",
-                file=sys.stderr,
-            )
+            if enable_logs:
+                print(
+                    f"WARN: Level inference failed; using fallback score. level={level} error={exc}",
+                    file=sys.stderr,
+                )
             results[level] = grade_episode([])
 
     payload = build_result_payload(results)
-    emit_log("[END]", overall_score=payload["overall_score"], task_scores=results, **results)
+    if enable_logs:
+        emit_log("[END]", overall_score=payload["overall_score"], task_scores=results, **results)
     return payload
 
 
 def main():
     try:
-        run_inference()
+        run_inference(enable_logs=True)
     except Exception as exc:
         results = fallback_results()
         payload = build_result_payload(results)
