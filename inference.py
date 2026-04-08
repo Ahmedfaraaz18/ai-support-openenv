@@ -149,7 +149,7 @@ def build_result_payload(results: Dict[str, float]) -> Dict[str, Any]:
     }
 
 
-def run_inference(enable_logs: bool = False) -> Dict[str, Any]:
+def run_inference(enable_logs: bool = False) -> Dict[str, float]:
     results: Dict[str, float] = fallback_results()
     use_mock = env_flag("BASELINE_USE_MOCK")
     model_name = get_model_name()
@@ -242,10 +242,10 @@ def run_inference(enable_logs: bool = False) -> Dict[str, Any]:
                 )
             results[level] = grade_episode([])
 
-    payload = build_result_payload(results)
     if enable_logs:
+        payload = build_result_payload(results)
         emit_log("[END]", overall_score=payload["overall_score"], task_scores=results, **results)
-    return payload
+    return results
 
 
 def main():
