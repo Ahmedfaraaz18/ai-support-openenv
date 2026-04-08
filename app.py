@@ -1,9 +1,8 @@
 from fastapi import FastAPI
+from starlette.middleware.wsgi import WSGIMiddleware
+
+from scripts.server import app as flask_app
 
 
-app = FastAPI()
-
-
-@app.get("/")
-def read_root():
-    return {"message": "AI Support Agent Running 🚀"}
+app = FastAPI(title="OpenEnv Support Agent")
+app.mount("/", WSGIMiddleware(flask_app))

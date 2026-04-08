@@ -206,7 +206,7 @@ def run_inference() -> Dict[str, float]:
             results[level] = grade_episode([])
 
     overall = sum(results.values()) / len(results)
-    emit_log("[END]", overall_score=overall, task_scores=results)
+    emit_log("[END]", overall_score=overall, task_scores=results, **results)
     return results
 
 
@@ -216,7 +216,7 @@ def main():
     except Exception as exc:
         results = fallback_results()
         overall = sum(results.values()) / len(results)
-        emit_log("[END]", error=str(exc), overall_score=overall, task_scores=results)
+        emit_log("[END]", error=str(exc), overall_score=overall, task_scores=results, **results)
 
 
 if __name__ == "__main__":
