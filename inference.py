@@ -131,10 +131,20 @@ def fallback_results() -> Dict[str, float]:
 def run_inference() -> Dict[str, float]:
     results: Dict[str, float] = fallback_results()
     use_mock = env_flag("BASELINE_USE_MOCK")
-    client = None if use_mock else get_client()
     model_name = get_model_name()
     if not model_name:
         model_name = "gpt-4o-mini"
+    client = None
+    if not use_mock:
+        try:
+            client = get_client()
+        except Exception as exc:
+            print(
+                f"WARN: Client initialization failed; using mock mode. error={exc}",
+                file=sys.stderr,
+            )
+            client = None
+            use_mock = True
     if client is None:
         use_mock = True
 
