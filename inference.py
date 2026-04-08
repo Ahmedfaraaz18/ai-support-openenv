@@ -128,6 +128,17 @@ def fallback_results() -> Dict[str, float]:
     return {level: grade_episode([]) for level in LEVELS}
 
 
+def build_result_payload(results: Dict[str, float]) -> Dict[str, Any]:
+    overall = sum(results.values()) / len(results)
+    return {
+        "task_scores": results,
+        "baseline_scores": results,
+        "overall_score": overall,
+        "overall": overall,
+        **results,
+    }
+
+
 def run_inference() -> Dict[str, float]:
     results: Dict[str, float] = fallback_results()
     use_mock = env_flag("BASELINE_USE_MOCK")
@@ -215,9 +226,9 @@ def run_inference() -> Dict[str, float]:
             )
             results[level] = grade_episode([])
 
-    overall = sum(results.values()) / len(results)
-    emit_log("[END]", overall_score=overall, task_scores=results, **results)
-    return results
+    payload = build_result_payload(results)
+    emit_log("[END]", overall_score=payload["overall_score"], task_scores=results, **results)
+    return payload
 
 
 def main():
@@ -225,8 +236,8 @@ def main():
         run_inference()
     except Exception as exc:
         results = fallback_results()
-        overall = sum(results.values()) / len(results)
-        emit_log("[END]", error=str(exc), overall_score=overall, task_scores=results, **results)
+        payload = build_result_payload(results)
+        emit_log("[END]", error=str(exc), overall_score=payload["overall_score"], task_scores=results, **results)
 
 
 if __name__ == "__main__":

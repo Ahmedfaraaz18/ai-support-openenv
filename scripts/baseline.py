@@ -3,14 +3,14 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from inference import fallback_results, run_inference
+from inference import build_result_payload, fallback_results, run_inference
 
 
 def run_baseline():
     try:
         return run_inference()
     except Exception:
-        return fallback_results()
+        return build_result_payload(fallback_results())
 
 
 if __name__ == "__main__":
