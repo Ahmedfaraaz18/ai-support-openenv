@@ -1,6 +1,14 @@
 from env.environment import SupportTicketEnv
 
 
+def generate_answer(*args, **kwargs):
+    return "This is a placeholder response"
+
+
+def parse_answer(*args, **kwargs):
+    return {"parsed": True}
+
+
 def run():
     for level in ["easy", "medium", "hard"]:
         print(f"[START] task={level}", flush=True)
