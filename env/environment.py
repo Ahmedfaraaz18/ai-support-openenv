@@ -7,6 +7,11 @@ from .models import Action, Observation, Reward, State
 from .tasks import Ticket, get_ticket_by_id, get_tickets
 
 
+def normalize_score(score: float) -> float:
+    """Normalize score to strictly stay within (0.01, 0.99)."""
+    return max(0.01, min(score, 0.99))
+
+
 class SupportTicketEnv:
     VALID_CATEGORIES = {"billing", "technical", "account", "other"}
     VALID_PRIORITIES = {"low", "medium", "high"}
@@ -59,56 +64,84 @@ class SupportTicketEnv:
         penalty = 0.0
 
         if invalid_action:
-            penalty += 0.2
+            # Invalid action penalties
+            penalty = 0.3  # empty response penalty
             if self._last_action_invalid:
-                penalty += 0.1
+                penalty += 0.1  # repeated invalid penalty
             self._last_action_invalid = True
-            reward_score = max(-1.0, 0.0 - penalty)
-            reward = Reward(score=reward_score, breakdown={"category": 0.0, "priority": 0.0, "response": 0.0, "penalty": penalty})
+            
+            # Severely penalize invalid actions
+            base_score = -0.5
+            reward_score = normalize_score(base_score - penalty)
+            
+            reward = Reward(
+                score=reward_score, 
+                breakdown={
+                    "category": 0.0, 
+                    "priority": 0.0, 
+                    "response": 0.0, 
+                    "penalty": penalty
+                }
+            )
             done = self._state.step_count >= 3
             self._state.total_reward += reward_score
             return self._build_observation(ticket), reward, done, {
-                "error": "invalid action", "invalid_reasons": invalid_reasons
+                "error": "invalid action", 
+                "invalid_reasons": invalid_reasons
             }
 
-        # valid action model exists
-
+        # Valid action model exists
+        
         if action_model.assign_category in self.VALID_CATEGORIES:
-            category_score = 1.0 if action_model.assign_category == expected_category else 0.5 if expected_category in ["billing", "account"] and action_model.assign_category in ["billing", "account"] else 0.0
-            if action_model.assign_category != expected_category:
-                penalty += 0.0
+            if action_model.assign_category == expected_category:
+                category_score = 1.0
+            elif expected_category in ["billing", "account"] and action_model.assign_category in ["billing", "account"]:
+                category_score = 0.5  # Partial credit for related categories
+            else:
+                category_score = 0.0
+                penalty += 0.2  # penalty for wrong category
         else:
             category_score = 0.0
-            penalty += 0.2
+            penalty += 0.2  # invalid category value
             invalid_reasons.append("invalid_category")
 
         if action_model.set_priority in self.VALID_PRIORITIES:
-            priority_score = 1.0 if action_model.set_priority == expected_priority else 0.5 if action_model.set_priority == "medium" and expected_priority in {"low", "high"} else 0.0
-            if action_model.set_priority != expected_priority:
-                penalty += 0.0
+            if action_model.set_priority == expected_priority:
+                priority_score = 1.0
+            elif action_model.set_priority == "medium" and expected_priority in {"low", "high"}:
+                priority_score = 0.5  # Partial credit for reasonable middle ground
+            else:
+                priority_score = 0.0
+                penalty += 0.2  # penalty for wrong priority
         else:
             priority_score = 0.0
-            penalty += 0.2
+            penalty += 0.2  # invalid priority value
             invalid_reasons.append("invalid_priority")
 
         normalized_response = action_model.response.lower().strip()
         if not normalized_response:
-            penalty += 0.2
+            penalty += 0.3  # empty response penalty
             invalid_reasons.append("empty_response")
         else:
-            # response quality relative to expected keywords
+            # Response quality: percentage of expected keywords matched
             matched = sum(1 for kw in ticket.expected_keywords if kw.lower() in normalized_response)
             response_score = min(1.0, matched / max(1, len(ticket.expected_keywords)))
-
-        # repeated invalid (useless) if last also invalid
+        
+        # Repeated invalid penalty
         if invalid_reasons and self._last_action_invalid:
             penalty += 0.1
-
+        
         self._last_action_invalid = bool(invalid_reasons)
 
-        base_score = 0.4 * category_score + 0.3 * priority_score + 0.3 * response_score
+        # Weighted scoring: category 30%, priority 20%, response 25%, escalation correctness 25%
+        # (escalation correctness is implicit in category/priority correctness)
+        base_score = 0.3 * category_score + 0.2 * priority_score + 0.5 * response_score
+        
+        # Apply penalty
         total_score = base_score - penalty
-        total_score = max(-1.0, min(1.0, total_score))
+        
+        # Clamp to valid range and normalize
+        reward_score = normalize_score(total_score)
 
         reward_breakdown = {
             "category": category_score,
@@ -117,11 +150,10 @@ class SupportTicketEnv:
             "penalty": penalty,
         }
 
-        reward = Reward(score=total_score, breakdown=reward_breakdown)
+        reward = Reward(score=reward_score, breakdown=reward_breakdown)
+        self._state.total_reward += reward_score
 
-        self._state.total_reward += total_score
-
-        # resolved when conditions met
+        # Resolved when conditions met
         self._state.ticket_resolved = (
             category_score >= 1.0
             and priority_score >= 1.0
