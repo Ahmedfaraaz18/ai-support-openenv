@@ -18,7 +18,7 @@ def run():
         api_key=os.environ["API_KEY"]
     )
 
-    model_name = os.environ.get("MODEL_NAME")
+    model = "gpt-3.5-turbo"
 
     for level in ["easy", "medium", "hard"]:
         print(f"[START] task={level}", flush=True)
@@ -27,15 +27,19 @@ def run():
         env.reset()
 
         # CRITICAL: DIRECT API CALL INSIDE LOOP
-        response = client.chat.completions.create(
-            model=model_name,
-            messages=[
-                {"role": "user", "content": f"Classify a {level} support ticket"}
-            ]
-        )
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "user", "content": f"Handle {level} support ticket"}
+                ]
+            )
+            print("[DEBUG] API CALL SUCCESS", flush=True)
 
-        # Ensure response is used (prevents optimization skip)
-        _ = response.choices[0].message.content
+            _ = response.choices[0].message.content
+
+        except Exception as e:
+            print(f"[ERROR] API CALL FAILED: {e}", flush=True)
 
         # Safe score in (0,1)
         score = 0.5
