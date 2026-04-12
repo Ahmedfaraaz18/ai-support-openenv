@@ -8,8 +8,8 @@ from .tasks import Ticket, get_ticket_by_id, get_tickets
 
 
 def normalize_score(score: float) -> float:
-    """Normalize score to strictly stay within (0.01, 0.99)."""
-    return max(0.01, min(score, 0.99))
+    """Normalize score to strictly stay within (0.1, 0.9)."""
+    return max(0.1, min(score, 0.9))
 
 
 class SupportTicketEnv:

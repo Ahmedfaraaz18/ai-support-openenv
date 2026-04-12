@@ -2,12 +2,12 @@ from typing import Any, Dict, List
 
 from .tasks import get_ticket_by_id
 
-EPSILON = 0.01
+EPSILON = 0.1
 
 
 def normalize_score(score: float) -> float:
-    """Keep platform-facing task scores strictly inside (0.01, 0.99)."""
-    return float(min(0.99, max(EPSILON, score)))
+    """Keep platform-facing task scores strictly inside (0.1, 0.9)."""
+    return float(min(0.9, max(EPSILON, score)))
 
 
 def grade_episode(trajectory: List[Dict[str, Any]]) -> float:

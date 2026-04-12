@@ -19,14 +19,14 @@ def test_normalize_score():
     print("\n[TEST] normalize_score function...")
     
     test_cases = [
-        (-1.0, 0.01),
-        (-0.5, 0.01),
-        (0.0, 0.01),
+        (-1.0, 0.1),
+        (-0.5, 0.1),
+        (0.0, 0.1),
         (0.5, 0.5),
         (0.8, 0.8),
-        (0.99, 0.99),
-        (1.0, 0.99),
-        (2.0, 0.99),
+        (0.9, 0.9),
+        (1.0, 0.9),
+        (2.0, 0.9),
     ]
     
     for input_val, expected in test_cases:
