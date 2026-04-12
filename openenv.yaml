@@ -22,14 +22,14 @@ tasks:
     name: easy
     difficulty: easy
     description: clear intent tickets, single issue
-    grader: true
+    grader: env.grader:grade_episode
   - id: medium
     name: medium
     difficulty: medium
     description: ambiguous tickets, 2 possible categories
-    grader: true
+    grader: env.grader:grade_episode
   - id: hard
     name: hard
     difficulty: hard
     description: multi-problem tickets, noisy text, conflicting priorities
-    grader: true
+    grader: env.grader:grade_episode
