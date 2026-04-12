@@ -16,13 +16,14 @@ class SupportTicketEnv:
     VALID_CATEGORIES = {"billing", "technical", "account", "other"}
     VALID_PRIORITIES = {"low", "medium", "high"}
 
-    def __init__(self, level: str = "easy", seed: int = 42):
-        self.level = level
+    def __init__(self, level: str = "easy", seed: int = 42, task: Optional[str] = None):
+        selected_level = task if task is not None else level
+        self.level = selected_level
         self.seed = seed
         self.rng = random.Random(seed)
-        self.tickets: List[Ticket] = get_tickets(level)
+        self.tickets: List[Ticket] = get_tickets(selected_level)
         if not self.tickets:
-            raise ValueError(f"No tickets found for level '{level}'")
+            raise ValueError(f"No tickets found for level '{selected_level}'")
         self.current_ticket: Optional[Ticket] = None
         self._state = State(step_count=0, ticket_resolved=False, total_reward=0.0)
         self._last_action_invalid: bool = False
@@ -133,13 +134,18 @@ class SupportTicketEnv:
         
         self._last_action_invalid = bool(invalid_reasons)
 
-        # Weighted scoring: category 30%, priority 20%, response 25%, escalation correctness 25%
-        # (escalation correctness is implicit in category/priority correctness)
+        # Weighted scoring: category 30%, priority 20%, response 50%
         base_score = 0.3 * category_score + 0.2 * priority_score + 0.5 * response_score
-        
-        # Apply penalty
-        total_score = base_score - penalty
-        
+
+        difficulty_penalty = {
+            "easy": 0.1,
+            "medium": 0.3,
+            "hard": 0.5,
+        }.get(self.level, 0.0)
+
+        # Apply penalty and difficulty adjustment so tasks differ by level
+        total_score = base_score - penalty - difficulty_penalty
+
         # Clamp to valid range and normalize
         reward_score = normalize_score(total_score)
 

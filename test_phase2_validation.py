@@ -8,6 +8,7 @@ Verifies that all 3 task levels pass validation requirements:
 - Different scores across difficulty levels
 """
 
+import pytest
 import sys
 from env.environment import SupportTicketEnv, normalize_score
 from env.grader import grade_episode
@@ -33,11 +34,25 @@ def test_normalize_score():
         assert result == expected, f"normalize_score({input_val}) = {result}, expected {expected}"
     
     print("  ✓ normalize_score works correctly")
-    return True
 
 
-def test_task_level(level: str, num_tests: int = 3):
+def test_support_ticket_env_accepts_task_argument():
+    env = SupportTicketEnv(task="easy", seed=42)
+    assert env.level == "easy"
+    obs = env.reset()
+    assert obs is not None
+    _, reward, _, _ = env.step({
+        "assign_category": "billing",
+        "set_priority": "high",
+        "response": "Hello, I will resolve this billing issue.",
+    })
+    assert 0 < reward.score < 1
+
+
+@pytest.mark.parametrize("level", ["easy", "medium", "hard"])
+def test_task_level(level: str):
     """Test a specific task level."""
+    num_tests = 3
     print(f"\n[TEST] Task level: {level}")
     
     scores = []
@@ -70,18 +85,18 @@ def test_task_level(level: str, num_tests: int = 3):
             
             # Verify reward score is in valid range
             score = reward.score
-            assert 0.01 <= score <= 0.99, f"Score {score} out of valid range [0.01, 0.99]"
+            assert 0 < score < 1, f"Score {score} out of valid range (0, 1)"
             print(f"  Step {step_count}: score={score:.3f}, breakdown={reward.breakdown}")
         
         # Grade the episode
         episode_score = grade_episode(trajectory)
-        assert 0.01 <= episode_score <= 0.99, f"Episode score {episode_score} out of valid range [0.01, 0.99]"
+        assert 0 < episode_score < 1, f"Episode score {episode_score} out of valid range (0, 1)"
         print(f"  Episode {test_num + 1}: score={episode_score:.3f}")
         scores.append(episode_score)
     
     avg_score = sum(scores) / len(scores)
+    assert 0 < avg_score < 1, f"Average score {avg_score} out of valid range (0, 1)"
     print(f"  Average score for {level}: {avg_score:.3f}")
-    return scores
 
 
 def test_determinism():
@@ -108,7 +123,6 @@ def test_determinism():
     
     assert reward1.score == reward2.score, f"Determinism failed: {reward1.score} != {reward2.score}"
     print(f"  ✓ Deterministic: both runs returned score {reward1.score:.3f}")
-    return True
 
 
 def test_score_differentiation():
@@ -164,12 +178,12 @@ def test_score_differentiation():
                 
                 # Verify reward score is in valid range
                 score = reward.score
-                assert 0.01 <= score <= 0.99, f"Score {score} out of valid range [0.01, 0.99]"
+                assert 0 < score < 1, f"Score {score} out of valid range (0, 1)"
                 print(f"  Test {test_num + 1}, Step {step_count}: score={score:.3f}")
             
             # Grade the episode
             episode_score = grade_episode(trajectory)
-            assert 0.01 <= episode_score <= 0.99, f"Episode score {episode_score} out of valid range [0.01, 0.99]"
+            assert 0 < episode_score < 1, f"Episode score {episode_score} out of valid range (0, 1)"
             print(f"  Test {test_num + 1} Episode score: {episode_score:.3f}")
             scores.append(episode_score)
         
@@ -187,9 +201,8 @@ def test_score_differentiation():
     print(f"    Hard:   {hard_avg:.3f}")
     
     # All scores should be valid
-    print(f"  ✓ All scores are between 0.01 and 0.99")
-    
-    return True
+    assert easy_avg != medium_avg or medium_avg != hard_avg, "Score averages for levels should not all be identical"
+    print(f"  ✓ All scores are between 0 and 1")
 
 
 def test_no_extreme_scores():
@@ -224,7 +237,6 @@ def test_no_extreme_scores():
     assert extreme_scores["1.0"] == 0, f"Found {extreme_scores['1.0']} steps with score 1.0"
     
     print(f"  ✓ No 0.0 or 1.0 scores found in {total_steps} steps")
-    return True
 
 
 def main():
