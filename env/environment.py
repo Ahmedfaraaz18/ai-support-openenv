@@ -190,3 +190,13 @@ class SupportTicketEnv:
             current_status=ticket.current_status,
             urgency_hint=ticket.urgency_hint,
         )
+
+    def get_available_tasks(self):
+        return ["easy", "medium", "hard"]
+
+    def get_task(self):
+        return self.level
+
+    def get_grader(self):
+        from .grader import grade_episode
+        return grade_episode
